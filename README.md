@@ -59,7 +59,16 @@ python design-patterns/observer/example.py
 | 事件驱动架构 | [architectures/event-driven/](architectures/event-driven/) | 事件总线 + 发布订阅 |
 | 微服务架构 | [architectures/microservices/](architectures/microservices/) | 独立服务通过 HTTP 通信 |
 | 管道架构 | [architectures/pipeline/](architectures/pipeline/) | 数据经过多个处理阶段流转 |
+| 单体架构 | [architectures/monolithic/](architectures/monolithic/) | 所有功能在一个应用中 |
+| MVC | [architectures/mvc/](architectures/mvc/) | Model-View-Controller 三角分离 |
+| MVVM | [architectures/mvvm/](architectures/mvvm/) | 数据绑定驱动视图 |
 | 六边形架构 | [architectures/hexagonal/](architectures/hexagonal/) | 端口与适配器，核心不依赖外部 |
+| CQRS | [architectures/cqrs/](architectures/cqrs/) | 命令与查询分离，读写模型独立 |
+| 无服务器架构 | [architectures/serverless/](architectures/serverless/) | 函数即服务，按调用计费 |
+| 事件溯源 | [architectures/event-sourcing/](architectures/event-sourcing/) | 以事件序列替代传统状态存储 |
+| 绞杀者模式 | [architectures/strangler/](architectures/strangler/) | 逐步用新系统替换旧系统 |
+| Saga | [architectures/saga/](architectures/saga/) | 微服务下的分布式长事务协调 |
+| REST 架构 | [architectures/rest/](architectures/rest/) | 资源 + 统一接口 + 无状态通信 |
 
 ### 设计模式
 
