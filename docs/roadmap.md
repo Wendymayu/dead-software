@@ -12,14 +12,20 @@
 | 管道架构 | `architectures/pipeline/` | 数据经过多个处理阶段流转 | ✅ 已完成 |
 | 单体架构 | `architectures/monolithic/` | 单一应用包含所有功能模块 | ❌ 未完成 |
 | MVC | `architectures/mvc/` | Model-View-Controller 三角分离 | ❌ 未完成 |
+| MVP | `architectures/mvp/` | Model-View-Presenter，View 与 Model 完全隔离 | ❌ 未完成 |
+| MVVM | `architectures/mvvm/` | Model-View-ViewModel，数据绑定驱动视图 | ❌ 未完成 |
 | 六边形架构 | `architectures/hexagonal/` | 核心业务通过端口与适配器与外部交互 | ❌ 未完成 |
 | 客户端-服务器 | `architectures/client-server/` | 客户端发起请求，服务器响应 | ❌ 未完成 |
 | SOA | `architectures/soa/` | 服务通过标准契约协作，强调复用与治理 | ❌ 未完成 |
 | CQRS | `architectures/cqrs/` | 命令与查询分离，读写模型独立 | ❌ 未完成 |
 | 无服务器架构 | `architectures/serverless/` | 函数即服务，按调用计费，无需管理基础设施 | ❌ 未完成 |
 | 插件架构 | `architectures/plugin/` | 核心系统通过插件注册表动态加载扩展 | ❌ 未完成 |
+| 微内核 | `architectures/microkernel/` | 最小核心 + 可选功能扩展，与插件架构的区别在于核心更薄 | ❌ 未完成 |
+| 对等网络 | `architectures/peer-to-peer/` | 节点既是客户端又是服务器，无中心 | ❌ 未完成 |
 | Actor 模型 | `architectures/actor/` | 每个 Actor 独立状态+邮箱，通过消息通信 | ❌ 未完成 |
 | 事件溯源 | `architectures/event-sourcing/` | 以事件序列替代传统状态存储 | ❌ 未完成 |
+| 绞杀者模式 | `architectures/strangler/` | 逐步用新系统替换旧系统，渐进式迁移 | ❌ 未完成 |
+| Saga | `architectures/saga/` | 微服务下的分布式长事务协调 | ❌ 未完成 |
 | 黑板架构 | `architectures/blackboard/` | 多个专家协同求解，通过共享黑板交换信息 | ❌ 未完成 |
 | REST 架构 | `architectures/rest/` | 资源 + 统一接口 + 无状态通信 | ❌ 未完成 |
 
@@ -78,7 +84,11 @@
 以下主题之间存在强关联，阅读顺序会影响理解效果：
 
 - 单体架构 → 分层架构 → 六边形架构 → 微服务架构（系统的演化路径）
+- 单体架构 → 绞杀者模式 → 微服务架构（渐进迁移路径）
 - 客户端-服务器 → SOA → 微服务架构 → 无服务器架构（分布式架构的演进）
+- 客户端-服务器 → 对等网络（中心化 vs 去中心化）
+- MVC → MVP → MVVM（展示层架构的三代演进）
+- 插件架构 → 微内核（扩展机制从粗粒度到细粒度）
 - MVC → 管道架构（请求-响应式 → 数据流式）
 - 观察者模式 → 事件驱动架构 → 事件溯源 → CQRS（从微观到宏观）
 - Actor 模型 → 事件驱动架构（两种并发通信范式）
