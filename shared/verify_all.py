@@ -28,6 +28,8 @@ EXAMPLES = [
     ROOT / "architectures" / "hexagonal" / "advanced.py",
     ROOT / "architectures" / "event-sourcing" / "example.py",
     ROOT / "architectures" / "event-sourcing" / "advanced.py",
+    ROOT / "architectures" / "saga" / "example.py",
+    ROOT / "architectures" / "saga" / "advanced.py",
     ROOT / "design-patterns" / "observer" / "example.py",
     ROOT / "design-patterns" / "strategy" / "example.py",
     ROOT / "design-patterns" / "factory" / "example.py",
