@@ -59,6 +59,7 @@ python design-patterns/observer/example.py
 | 事件驱动架构 | [architectures/event-driven/](architectures/event-driven/) | 事件总线 + 发布订阅 |
 | 微服务架构 | [architectures/microservices/](architectures/microservices/) | 独立服务通过 HTTP 通信 |
 | 管道架构 | [architectures/pipeline/](architectures/pipeline/) | 数据经过多个处理阶段流转 |
+| 六边形架构 | [architectures/hexagonal/](architectures/hexagonal/) | 端口与适配器，核心不依赖外部 |
 
 ### 设计模式
 

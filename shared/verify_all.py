@@ -24,6 +24,8 @@ EXAMPLES = [
     ROOT / "architectures" / "microservices" / "advanced.py",
     ROOT / "architectures" / "pipeline" / "example.py",
     ROOT / "architectures" / "pipeline" / "advanced.py",
+    ROOT / "architectures" / "hexagonal" / "example.py",
+    ROOT / "architectures" / "hexagonal" / "advanced.py",
     ROOT / "design-patterns" / "observer" / "example.py",
     ROOT / "design-patterns" / "strategy" / "example.py",
     ROOT / "design-patterns" / "factory" / "example.py",
