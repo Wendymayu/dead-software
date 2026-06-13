@@ -68,6 +68,25 @@
 | 读写锁 | `concurrency/read-write-lock/` | 读共享、写互斥的并发控制 | ❌ 未完成 |
 | Future/Promise | `concurrency/future-promise/` | 异步操作的占位对象 | ❌ 未完成 |
 
+## AI & Agent 架构模式
+
+AI 应用和 Agent 系统中常用的架构模式。这些是 AI coding 时代最活跃的架构领域，也正是本项目名称"dead-software"所回应的核心变化。
+
+| 主题 | 目录 | 核心演示 | 状态 |
+|------|------|----------|------|
+| RAG | `ai-architectures/rag/` | 查询 → 检索外部知识 → 增强生成，让 LLM 有据可依 | ❌ 未完成 |
+| ReAct | `ai-architectures/react/` | 思考(Reason)→行动(Act)→观察(Observation)循环，Agent 的核心推理架构 | ❌ 未完成 |
+| Tool Use | `ai-architectures/tool-use/` | LLM 选择并调用外部工具/函数，扩展能力边界 | ❌ 未完成 |
+| Prompt Chaining | `ai-architectures/prompt-chaining/` | 多个提示词串联，每步输出作为下步输入，分阶段解决复杂任务 | ❌ 未完成 |
+| Router | `ai-architectures/router/` | 分类用户意图 → 路由到专门处理器/Agent，避免一个大模型包打天下 | ❌ 未完成 |
+| Planning | `ai-architectures/planning/` | Agent 分解目标为子任务、制定计划、逐步执行，解决多步骤目标 | ❌ 未完成 |
+| Reflection | `ai-architectures/reflection/` | Agent 生成输出后自我审视并迭代改进，追求更高质量 | ❌ 未完成 |
+| Multi-Agent | `ai-architectures/multi-agent/` | 多个专长 Agent 协作，分工协商，团队式解决问题 | ❌ 未完成 |
+| Memory | `ai-architectures/memory/` | 短期对话记忆 + 长期知识存储 + 工作记忆，Agent 的状态管理架构 | ❌ 未完成 |
+| Guardrails | `ai-architectures/guardrails/` | 输入/输出验证层，约束 LLM 行为边界，安全与质量控制 | ❌ 未完成 |
+| Human-in-the-Loop | `ai-architectures/human-in-the-loop/` | Agent 在关键决策点暂停等待人类审批，确保可控性 | ❌ 未完成 |
+| MCP | `ai-architectures/mcp/` | 标准化协议连接 LLM 与外部工具和数据源，Agent 的"USB接口" | ❌ 未完成 |
+
 ## 反模式 (Anti-Patterns)
 
 | 主题 | 目录 | 核心演示 | 状态 |
@@ -97,6 +116,15 @@
 - 管道架构 → 生产者-消费者 → Reactor（管道的并发变体）
 - 黑板架构 → 事件驱动架构（共享空间 vs 消息传递，两种协同范式）
 - SOLID 原则 → 设计模式 → 架构模式（理论 → 微观 → 宏观）
+- 管道架构 → Prompt Chaining（传统数据管道 → LLM 提示词管道）
+- 事件驱动架构 → RAG（事件触发 → 检索增强生成）
+- 工厂模式 → Tool Use（对象创建 → 工具调用，都是"按需获取能力"）
+- 责任链模式 → Router → Guardrails（请求逐层过滤/路由/校验）
+- 观察者模式 → Memory（状态变化 → 记忆更新与召回）
+- ReAct → Reflection → Planning（单步推理 → 自我审视 → 多步规划，Agent 能力递进）
+- 黑板架构 → Multi-Agent（共享空间协同 → 多 Agent 协商）
+- 六边形架构 → MCP（端口与适配器 → 标准化工具协议，都是"核心与外部解耦"）
+- Human-in-the-Loop → Guardrails（人为介入 → 自动约束，两种 AI 安全策略）
 
 ---
 
