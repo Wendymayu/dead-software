@@ -65,15 +65,15 @@ if __name__ == "__main__":
     print("=" * 40 + "\n")
 
     coffee = SimpleCoffee()
-    print(f"  {coffee.description()} — ¥{coffee.cost()}")
+    print(f"  {coffee.description()} -- {coffee.cost()}元")
 
     coffee = MilkDecorator(coffee)
-    print(f"  {coffee.description()} — ¥{coffee.cost()}")
+    print(f"  {coffee.description()} -- {coffee.cost()}元")
 
     coffee = SugarDecorator(coffee)
-    print(f"  {coffee.description()} — ¥{coffee.cost()}")
+    print(f"  {coffee.description()} -- {coffee.cost()}元")
 
     coffee = WhipDecorator(coffee)
-    print(f"  {coffee.description()} — ¥{coffee.cost()}")
+    print(f"  {coffee.description()} -- {coffee.cost()}元")
 
     print("\n装饰链: Whip → Sugar → Milk → SimpleCoffee")

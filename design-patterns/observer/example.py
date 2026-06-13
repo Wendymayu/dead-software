@@ -33,7 +33,7 @@ class Subject:
 
 class EmailNotifier:
     def update(self, state):
-        print(f"    [EmailNotifier] 发送邮件: 温度变为 {state}°C")
+        print(f"    [EmailNotifier] 发送邮件: 温度变为 {state}C")
 
 
 class Logger:
@@ -44,9 +44,9 @@ class Logger:
 class AlertSystem:
     def update(self, state):
         if state > 35:
-            print(f"    [AlertSystem] ⚠️ 高温警报: {state}°C!")
+            print(f"    [AlertSystem] [WARNING] 高温警报: {state}C!")
         else:
-            print(f"    [AlertSystem] 温度正常: {state}°C")
+            print(f"    [AlertSystem] 温度正常: {state}C")
 
 
 # --- 运行演示 ---
