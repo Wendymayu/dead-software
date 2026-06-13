@@ -47,5 +47,21 @@ design-patterns/        # Micro design patterns
   strategy/
   factory/
   decorator/
+solid/                  # SOLID principles
+  srp/
+  ocp/
+  lsp/
+  isp/
+  dip/
+concurrency/            # Concurrency patterns
+  producer-consumer/
+  reactor/
+  read-write-lock/
+  future-promise/
+anti-patterns/          # Anti-patterns
+  god-object/
+  tight-coupling/
+  premature-optimization/
+  copy-paste-programming/
 shared/                 # Shared utilities
 ```
