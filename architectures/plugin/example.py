@@ -7,12 +7,8 @@
 
 # --- 插件接口：所有插件必须实现 ---
 class PluginInterface:
-    """标准接口，插件必须提供 name 和 execute"""
-    def name(self):
-        raise NotImplementedError
-
-    def execute(self, data):
-        raise NotImplementedError
+    def name(self): raise NotImplementedError
+    def execute(self, data): raise NotImplementedError
 
 
 # --- 插件注册表：核心系统的一部分 ---
@@ -21,7 +17,6 @@ class PluginRegistry:
         self._plugins = {}
 
     def register(self, plugin):
-        """核心代码不需要知道插件具体是什么，只调用标准接口"""
         n = plugin.name()
         self._plugins[n] = plugin
         print(f"[Registry] 注册插件: {n}")
@@ -34,24 +29,17 @@ class PluginRegistry:
         print(f"[Registry] 调用插件: {plugin_name}")
         return plugin.execute(data)
 
-    def list_plugins(self):
-        return list(self._plugins.keys())
-
 
 # --- 具体插件：各自独立实现标准接口 ---
 class EncryptPlugin(PluginInterface):
-    def name(self):
-        return "encrypt"
-
+    def name(self): return "encrypt"
     def execute(self, data):
         print(f"  [EncryptPlugin] 加密: {data}")
         return f"ENC({data})"
 
 
 class CompressPlugin(PluginInterface):
-    def name(self):
-        return "compress"
-
+    def name(self): return "compress"
     def execute(self, data):
         print(f"  [CompressPlugin] 压缩: {data}")
         return f"ZIP({data})"
@@ -68,15 +56,15 @@ if __name__ == "__main__":
     print("=" * 40 + "\n")
 
     result = registry.execute("encrypt", "hello")
-    print(f"  → 结果: {result}\n")
+    print(f"  -> 结果: {result}\n")
 
     result = registry.execute("compress", "big data")
-    print(f"  → 结果: {result}\n")
+    print(f"  -> 结果: {result}\n")
 
     # 添加新插件只需 register，核心代码零修改
     class LogPlugin(PluginInterface):
         def name(self): return "log"
-        def execute(self, data): print(f"  [LogPlugin] 记录: {data}"); return data
-
+        def execute(self, data):
+            print(f"  [LogPlugin] 记录: {data}"); return data
     registry.register(LogPlugin())
     registry.execute("log", "system event")

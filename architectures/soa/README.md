@@ -68,7 +68,7 @@ python advanced.py
 - 部署耦合——服务复用意味着共享部署，不能独立演进
 - 治理开销——ESB 配置、流程编排、消息转换需要专门团队维护
 
-## 眜实项目中的应用
+## 真实项目中的应用
 
 - **企业 ESB** — IBM WebSphere ESB、Oracle Service Bus、Mule ESB
 - **WebService/SOAP** — WSDL 契约 + SOAP 协议，SOA 的经典技术栈
