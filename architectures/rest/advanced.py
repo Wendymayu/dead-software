@@ -1,54 +1,95 @@
-"""REST进阶：HATEOAS (Hypermedia as the Engine of Application State)
+"""REST 进阶示例：Stripe API 设计风格
 
-演示REST超越CRUD的核心约束：
-- 响应包含超媒体链接，客户端动态发现可用操作
-- 客户端无需硬编码URL，跟随链接即可导航
-- 服务端控制状态流转，客户端只需理解媒体类型
+模拟 Stripe 的 REST API 设计：
+- 资源(Customers/Charges) + HTTP方法语义
+- 统一错误格式、cursor分页、幂等键、关联资源链接(HATEOAS-lite)
 """
 
-# --- 资源存储 ---
-orders = {
-    101: {"id": 101, "user_id": 1, "status": "pending", "item": "Book"},
-}
 
-# --- HATEOAS：响应包含_links，驱动应用状态 ---
-def get_order(order_id):
-    order = orders.get(order_id)
-    if not order:
-        return {"status": 404, "body": "Not found"}
-    # 根据当前状态动态生成可用链接——HATEOAS核心
-    links = [{"rel": "self", "href": f"/orders/{order_id}", "method": "GET"},
-             {"rel": "user", "href": f"/users/{order['user_id']}", "method": "GET"}]
-    if order["status"] == "pending":
-        links.append({"rel": "pay", "href": f"/orders/{order_id}/pay", "method": "POST"})
-        links.append({"rel": "cancel", "href": f"/orders/{order_id}/cancel", "method": "POST"})
-    elif order["status"] == "paid":
-        links.append({"rel": "ship", "href": f"/orders/{order_id}/ship", "method": "POST"})
-    elif order["status"] == "shipped":
-        links.append({"rel": "confirm", "href": f"/orders/{order_id}/confirm", "method": "POST"})
-    return {"status": 200, "body": {**order, "_links": links}}
+class StripeAPI:
+    def __init__(self):
+        self._customers, self._charges, self._idempotency, self._next_id = {}, {}, {}, 1
 
-def follow_link(order_id, action):
-    """客户端跟随链接——无需硬编码业务流程"""
-    transitions = {"pay": "paid", "cancel": "cancelled", "ship": "shipped", "confirm": "completed"}
-    orders[order_id]["status"] = transitions[action]
+    def _new_id(self, prefix):
+        id = f"{prefix}_{self._next_id}"
+        self._next_id += 1
+        return id
 
-def show_links(order_id, note=""):
-    res = get_order(order_id)
-    body = res["body"]
-    print(f"[GET] Order #{body['id']} status={body['status']} {note}")
-    for link in body["_links"]:
-        print(f"  {link['method']} {link['href']} ({link['rel']})")
+    def _links(self, resource, id, related=None):
+        links = [{"rel": "self", "href": f"/v1/{resource}/{id}"}]
+        for r, rid in (related or []):
+            links.append({"rel": r, "href": f"/v1/{r}/{rid}"})
+        return links
+
+    def _error(self, type, msg, status):
+        print(f"  [error] {type}: {msg}")
+        return {"status": status, "body": {"error": {"type": type, "message": msg}}}
+
+    def _check_idempotency(self, key):
+        if key and key in self._idempotency:
+            print(f"  [idempotent] key={key} -> 返回已有结果")
+            return self._idempotency[key]
+        return None
+
+    def _save_idempotency(self, key, result):
+        if key:
+            self._idempotency[key] = result
+
+    def POST_customers(self, data, idempotency_key=None):
+        cached = self._check_idempotency(idempotency_key)
+        if cached:
+            return cached
+        id = self._new_id("cus")
+        customer = {"id": id, "name": data["name"], "email": data["email"], "_links": self._links("customers", id)}
+        self._customers[id] = customer
+        result = {"status": 200, "body": customer}
+        self._save_idempotency(idempotency_key, result)
+        print(f"  [POST /customers] 创建客户: {id}")
+        return result
+
+    def GET_customers(self, limit=3, starting_after=None):
+        ids = sorted(self._customers.keys())
+        if starting_after:
+            ids = [i for i in ids if i > starting_after]
+        has_more = len(ids) > limit
+        print(f"  [GET /customers] limit={limit}, has_more={has_more}")
+        return {"status": 200, "body": {"data": [self._customers[i] for i in ids[:limit]], "has_more": has_more}}
+
+    def POST_charges(self, data, idempotency_key=None):
+        cached = self._check_idempotency(idempotency_key)
+        if cached:
+            return cached
+        cus_id = data["customer_id"]
+        if cus_id not in self._customers:
+            return self._error("customer_not_found", f"客户 {cus_id} 不存在", 404)
+        id = self._new_id("ch")
+        charge = {"id": id, "amount": data["amount"], "customer": cus_id,
+                  "_links": self._links("charges", id, [("customers", cus_id)])}
+        self._charges[id] = charge
+        result = {"status": 200, "body": charge}
+        self._save_idempotency(idempotency_key, result)
+        print(f"  [POST /charges] 创建支付: {id}, amount={data['amount']}")
+        return result
+
 
 if __name__ == "__main__":
+    api = StripeAPI()
     print("=" * 50)
-    print("HATEOAS：超媒体驱动应用状态流转")
+    print("Stripe风格 REST API: 资源+方法+错误+分页+幂等")
     print("=" * 50 + "\n")
 
-    show_links(101)                      # pending → 可pay/cancel
-    print("\n[HATEOAS] 客户端跟随 rel=pay → 支付")
-    follow_link(101, "pay")
-    show_links(101)                      # paid → 可ship
-    print("\n[HATEOAS] 客户端跟随 rel=ship → 发货")
-    follow_link(101, "ship")
-    show_links(101, "(只剩确认)")          # shipped → 可confirm
+    print("--- 1. 创建客户(POST /customers) ---")
+    api.POST_customers({"name": "Alice", "email": "a@test.com"})
+    api.POST_customers({"name": "Bob", "email": "b@test.com"})
+    print("\n--- 2. 分页查询(GET /customers) ---")
+    api.GET_customers(limit=1)
+    print("\n--- 3. 创建支付+幂等键 ---")
+    api.POST_charges({"customer_id": "cus_1", "amount": 2000}, idempotency_key="pay_alice_1")
+    print("\n--- 4. 重复请求(幂等) ---")
+    api.POST_charges({"customer_id": "cus_1", "amount": 2000}, idempotency_key="pay_alice_1")
+    print("\n--- 5. 错误响应(统一格式) ---")
+    api.POST_charges({"customer_id": "cus_999", "amount": 100})
+    print("\n--- 6. 关联资源链接 ---")
+    charge = api.POST_charges({"customer_id": "cus_2", "amount": 500})
+    print(f"  _links: {charge['body']['_links']}")
+    print("\n核心洞察: Stripe=REST标杆, 幂等键防重复/统一错误/cursor分页/HATEOAS-lite链接")

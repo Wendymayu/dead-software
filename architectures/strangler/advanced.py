@@ -1,107 +1,99 @@
-"""绞杀者模式进阶示例：完整迁移生命周期
+"""绞杀者模式进阶示例：GitHub 的 Rails 单体迁移
 
-展示三个阶段和数据同步：
-- 开始阶段：100%旧系统
-- 中间阶段：新旧并存，数据双向同步
-- 最终阶段：100%新系统，旧系统移除
+模拟 GitHub 的 strangler 迁移过程：
+- 旧系统(Rails单体)处理所有请求
+- 路由层(Facade)决定请求由旧系统还是新服务处理
+- 新服务(Go)逐步接管特定路由
+- 迁移阶段：100% Rails → 混合 → 100% 新服务
 """
 
 
-# --- 旧系统 ---
-class LegacySystem:
-    """遗留系统：包含所有业务数据"""
+class RailsMonolith:
+    """旧系统：Rails单体，处理所有业务"""
     def __init__(self):
-        self._data = {
-            "user": {"u1": {"name": "Alice"}},
-            "order": {"o1": {"item": "Book"}},
-        }
+        self._users = {"u1": {"name": "alice"}, "u2": {"name": "bob"}}
+        self._repos = {"r1": {"name": "project-x", "owner": "u1"}}
+        self._auth_tokens = {"token_alice": "u1"}
 
-    def query(self, entity, id):
-        print(f"  [旧系统] 查询 {entity}/{id}")
-        return self._data.get(entity, {}).get(id)
+    def handle(self, route, data):
+        print(f"    [Rails单体] 处理 {route}")
+        if route == "/users":
+            return list(self._users.values())
+        elif route == "/repos":
+            return list(self._repos.values())
+        elif route == "/auth":
+            return {"user_id": self._auth_tokens.get(data.get("token"))}
+        elif route == "/git/push":
+            repo = self._repos.get(data["repo_id"])
+            return {"pushed": True, "repo": repo["name"], "by": "Rails"}
+        return {"error": "unknown route"}
 
-    def update(self, entity, id, value):
-        print(f"  [旧系统] 更新 {entity}/{id}")
-        self._data[entity][id] = value
 
-
-# --- 新系统 ---
-class NewSystem:
-    """新系统：逐步接收迁移的功能"""
+class GoService:
+    """新服务：Go实现，逐步接管高负载路由"""
     def __init__(self):
-        self._data = {}  # 从空开始，通过同步填充
+        self._git_data = {"r1": {"commits": 42}}
 
-    def query(self, entity, id):
-        print(f"  [新系统] 查询 {entity}/{id}")
-        return self._data.get(entity, {}).get(id)
-
-    def update(self, entity, id, value):
-        print(f"  [新系统] 更新 {entity}/{id}")
-        self._data.setdefault(entity, {})[id] = value
-
-
-# --- 数据同步器 ---
-class DataSynchronizer:
-    """新旧系统间的数据同步：迁移前将旧数据复制到新系统"""
-    def sync_to_new(self, legacy, new, entity):
-        print(f"[同步] {entity} 数据从旧系统 → 新系统")
-        for id, value in legacy._data.get(entity, {}).items():
-            new._data.setdefault(entity, {})[id] = value
+    def handle(self, route, data):
+        print(f"    [Go服务] 处理 {route} (高性能)")
+        if route == "/git/push":
+            repo_id = data["repo_id"]
+            self._git_data[repo_id]["commits"] += 1
+            return {"pushed": True, "repo": repo_id, "commits": self._git_data[repo_id]["commits"], "by": "Go"}
+        elif route == "/auth":
+            return {"user_id": "u1", "service": "GoAuth"}
+        return {"error": "unknown route"}
 
 
-# --- 绞杀者路由层 ---
-class StranglerRouter:
-    """路由层：管理请求分发，迁移时自动触发数据同步"""
-    def __init__(self, legacy, new):
+class StranglerFacade:
+    """绞杀者路由层：决定请求由旧系统还是新服务处理"""
+    def __init__(self, legacy, new_service):
         self._legacy = legacy
-        self._new = new
-        self._routes = {}  # entity -> "new"
-        self._sync = DataSynchronizer()
+        self._new = new_service
+        self._routes = {}  # route → "new" | "legacy"
 
-    def migrate(self, entity):
-        """迁移某个实体到新系统：路由切换 + 数据同步"""
-        print(f"[路由] {entity} → 新系统")
-        self._routes[entity] = "new"
-        self._sync.sync_to_new(self._legacy, self._new, entity)
+    def migrate_route(self, route):
+        """迁移路由到新服务"""
+        self._routes[route] = "new"
+        print(f"  [路由层] {route} → 迁移到Go服务")
 
-    def query(self, entity, id):
-        target = self._routes.get(entity, "legacy")
-        system = self._new if target == "new" else self._legacy
-        return system.query(entity, id)
-
-    def update(self, entity, id, value):
-        # 迁移后写入新系统，未迁移仍写旧系统
-        system = self._new if entity in self._routes else self._legacy
-        system.update(entity, id, value)
+    def handle(self, route, data):
+        target = self._routes.get(route, "legacy")
+        handler = self._new if target == "new" else self._legacy
+        print(f"  [路由层] {route} → {target}")
+        return handler.handle(route, data)
 
 
-# --- 运行演示 ---
 if __name__ == "__main__":
+    rails = RailsMonolith()
+    go = GoService()
+    facade = StranglerFacade(rails, go)
+
     print("=" * 50)
-    print("绞杀者模式进阶：完整迁移生命周期")
+    print("GitHub 绞杀者迁移：Rails单体 → Go微服务")
     print("=" * 50 + "\n")
 
-    legacy = LegacySystem()
-    new = NewSystem()
-    router = StranglerRouter(legacy, new)
-
-    # 阶段1：100%旧系统
-    print("--- 阶段1: 100%旧系统 ---")
-    router.query("user", "u1")
-    router.query("order", "o1")
+    print("--- 阶段1: 100% Rails单体 ---")
+    facade.handle("/users", {})
+    facade.handle("/git/push", {"repo_id": "r1"})
     print()
 
-    # 阶段2：迁移user（路由切换+数据同步）
-    print("--- 阶段2: 迁移user（数据同步+并存）---")
-    router.migrate("user")
-    router.query("user", "u1")   # → 新系统
-    router.query("order", "o1")  # → 仍旧系统
-    router.update("user", "u1", {"name": "Alice_V2"})
+    print("--- 阶段2: 迁移git路由(Git操作→Go) ---")
+    facade.migrate_route("/git/push")
+    facade.handle("/users", {})            # 仍→Rails
+    facade.handle("/git/push", {"repo_id": "r1"})  # →Go
     print()
 
-    # 阶段3：全部迁移，旧系统可移除
-    print("--- 阶段3: 全部迁移 → 移除旧系统 ---")
-    router.migrate("order")
-    router.query("user", "u1")
-    router.query("order", "o1")
-    print("\n[完成] 旧系统已被绞杀，可安全移除")
+    print("--- 阶段3: 迁移auth路由(认证→Go) ---")
+    facade.migrate_route("/auth")
+    facade.handle("/auth", {"token": "token_alice"})  # →GoAuth
+    facade.handle("/users", {})                       # 仍→Rails
+    print()
+
+    print("--- 阶段4: 最终状态(Git+Auth已迁移) ---")
+    print("  Rails单体可逐步缩减，最终只保留UI和轻量逻辑")
+    print("  GitHub真实案例：git操作→Go，认证→独立服务，API→新系统")
+
+    print("\n--- 核心洞察 ---")
+    print("  绞杀者模式的关键：路由层(Facade)是迁移的枢纽")
+    print("  每次只迁移一个路由，新旧并存，逐步替换——零停机迁移")

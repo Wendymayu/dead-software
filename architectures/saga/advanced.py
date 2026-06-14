@@ -1,113 +1,91 @@
-"""Saga 模式进阶示例：编排式 vs 协作式
+"""Saga 模式进阶示例：Temporal.io 工作流引擎
 
-对比两种 Saga 协调风格：
-- 编排式(Orchestration)：中央协调器控制流程，服务被动执行
-- 协作式(Choreography)：服务自行监听事件、决定下一步动作
+模拟 Temporal.io 的核心机制：
+- WorkflowExecutor 定义有序活动步骤
+- 每个活动(Activity)有重试策略和补偿(Compensation)
+- 重试耗尽后，执行器按逆序运行补偿——Saga模式
 """
 
 
-# --- 编排式：Saga 编排器集中控制 ---
-class OrchestratorSaga:
-    def __init__(self, order_id):
-        self.order_id = order_id
-        self.compensations = []
+class Activity:
+    """工作流活动：执行逻辑 + 重试策略 + 补偿逻辑"""
+    def __init__(self, name, execute, compensate, max_retries=2):
+        self.name, self.execute, self.compensate, self.max_retries = name, execute, compensate, max_retries
+
+
+class WorkflowExecutor:
+    """Temporal工作流执行器：编排活动 + 重试 + 补偿"""
+    def __init__(self, name, activities):
+        self.name, self.activities, self.completed = name, activities, []
 
     def run(self):
-        print("  [编排器] 开始协调事务流程")
-        try:
-            self._step("订单创建",   "订单取消",   self.order_id)
-            self._step("库存预留",   "库存释放",   self.order_id)
-            self._step("支付扣款",   "支付退款",   self.order_id)
-            print("  [编排器] [OK] 流程全部完成")
-        except Exception as e:
-            print(f"  [编排器] [FAIL] {e}，反向补偿")
-            for name, args in reversed(self.compensations):
-                print(f"    → {name} {args}")
+        print(f"[WorkflowExecutor] 启动工作流: {self.name}")
+        for activity in self.activities:
+            if self._retry(activity):
+                self.completed.append(activity)
+            else:
+                print(f"  [FAIL] {activity.name} 重试耗尽, 启动补偿")
+                self._compensate_all()
+                return False
+        print(f"[WorkflowExecutor] 工作流完成!")
+        return True
 
-    def _step(self, action, compensate, args):
-        print(f"  [编排器] 执行: {action} {args}")
-        self.compensations.append((compensate, args))
+    def _retry(self, activity):
+        for attempt in range(1, activity.max_retries + 1):
+            print(f"  [Activity] {activity.name} (尝试 {attempt}/{activity.max_retries})")
+            if activity.execute():
+                print(f"  [OK] {activity.name} 成功")
+                return True
+            print(f"  [FAIL] {activity.name} 失败, 准备重试...")
+        return False
 
-
-# --- 协作式：服务通过事件自主驱动流程 ---
-class EventBus:
-    def __init__(self):
-        self._handlers = {}
-
-    def on(self, event, handler):
-        self._handlers.setdefault(event, []).append(handler)
-
-    def emit(self, event, data):
-        print(f"  [事件] {event}: {data}")
-        for h in self._handlers.get(event, []):
-            h(data)
+    def _compensate_all(self):
+        print("  [Compensate] 按逆序执行补偿:")
+        for activity in reversed(self.completed):
+            print(f"  [Compensate] <- {activity.name}")
+            activity.compensate()
 
 
-class ChoreographyOrder:
-    def __init__(self, bus):
-        self.bus = bus
+# --- 模拟业务活动 ---
+def ok_create():
+    print("    -> 订单创建成功")
+    return True
 
-    def start(self, order_id):
-        print(f"  [订单] 创建订单 {order_id}，发出事件")
-        self.bus.emit("order_created", {"id": order_id})
+def ok_pay():
+    print("    -> 支付扣款成功: 200元")
+    return True
 
+def fail_inventory():
+    print("    -> 库存预留失败(库存不足)")
+    return False
 
-class ChoreographyInventory:
-    def __init__(self, bus):
-        self.bus = bus
-        bus.on("order_created", self.on_order)
+def cancel_order():
+    print("    -> 订单已取消")
 
-    def on_order(self, data):
-        print(f"  [库存] 预留库存，发出事件")
-        self.bus.emit("inventory_reserved", data)
+def refund_payment():
+    print("    -> 支付已退款: 200元")
 
-
-class ChoreographyPayment:
-    def __init__(self, bus, fail=False):
-        self.bus = bus
-        self.fail = fail
-        bus.on("inventory_reserved", self.on_reserved)
-
-    def on_reserved(self, data):
-        if self.fail:
-            print(f"  [支付] [FAIL] 支付失败，发出失败事件")
-            self.bus.emit("payment_failed", data)
-        else:
-            print(f"  [支付] 扣款成功，发出事件")
-            self.bus.emit("payment_completed", data)
-
-
-class ChoreographyCompensator:
-    def __init__(self, bus):
-        bus.on("payment_failed", self.on_failure)
-
-    def on_failure(self, data):
-        print(f"  [补偿] 收到失败事件，执行: 释放库存 → 取消订单")
+def release_inventory():
+    print("    -> 库存已释放")
 
 
 if __name__ == "__main__":
     print("=" * 50)
-    print("Saga 进阶：编排式 vs 协作式")
+    print("Temporal.io Saga: 工作流 + 重试 + 补偿")
     print("=" * 50 + "\n")
 
-    print("--- 编排式（中央协调器控制） ---")
-    OrchestratorSaga("O-001").run()
-    print()
+    print("--- 失败场景(库存不足触发补偿) ---")
+    WorkflowExecutor("下单流程", [
+        Activity("创建订单", ok_create, cancel_order, 2),
+        Activity("支付扣款", ok_pay, refund_payment, 2),
+        Activity("库存预留", fail_inventory, release_inventory, 2),
+    ]).run()
 
-    print("--- 协作式（事件驱动，服务自主） ---")
-    bus = EventBus()
-    ChoreographyOrder(bus)
-    ChoreographyInventory(bus)
-    ChoreographyPayment(bus)
-    ChoreographyCompensator(bus)
-    bus.on("payment_completed", lambda d: print("  [OK] 流程完成"))
-    ChoreographyOrder(bus).start("C-001")
-    print()
+    print("\n--- 成功场景 ---")
+    WorkflowExecutor("下单流程(成功)", [
+        Activity("创建订单", lambda: (print("    -> 订单OK"), True), cancel_order, 2),
+        Activity("支付扣款", lambda: (print("    -> 支付OK"), True), refund_payment, 2),
+        Activity("库存预留", lambda: (print("    -> 库存OK"), True), release_inventory, 2),
+    ]).run()
 
-    print("--- 协作式（支付失败触发补偿） ---")
-    bus2 = EventBus()
-    ChoreographyOrder(bus2)
-    ChoreographyInventory(bus2)
-    ChoreographyPayment(bus2, fail=True)
-    ChoreographyCompensator(bus2)
-    ChoreographyOrder(bus2).start("C-002")
+    print("\n核心洞察: Temporal=Saga编排器+自动重试+持久化执行, 开发者只定义活动+补偿")
