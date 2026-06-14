@@ -1,92 +1,97 @@
-"""六边形架构进阶示例：适配器替换与驱动适配器
+"""六边形架构进阶示例：模拟 Spring Boot 端口与适配器
 
-展示六边形架构的核心优势：
-- 同一端口可插拔不同适配器，核心代码零修改
-- 驱动适配器从外部调用核心，核心不关心调用来源"""
+展示 Spring Boot 六边形架构核心：
+- Core: UserService 纯业务，定义 Port 接口
+- Driving: RestController (入站) 调用核心
+- Driven: JpaUserRepo / EmailNotifier (出站) 实现 Port
+- Spring DI: 适配器注入核心，核心不依赖适配器
+"""
 
 from abc import ABC, abstractmethod
-import os
 
 
-# --- 端口(Port) ---
-class Repository(ABC):
+# --- Core Domain: 只依赖端口接口 ---
+class UserRepositoryPort(ABC):
+    @abstractmethod
+    def find_by_email(self, email): pass
     @abstractmethod
     def save(self, user): pass
+
+class NotificationPort(ABC):
     @abstractmethod
-    def find(self, name): pass
+    def send(self, email, subject, body): pass
 
-
-# --- 核心业务逻辑（与基础示例完全相同） ---
 class UserService:
-    def __init__(self, repo: Repository):
+    """核心业务: 只依赖端口接口，不依赖具体实现"""
+    def __init__(self, repo: UserRepositoryPort, notifier: NotificationPort):
         self.repo = repo
+        self.notifier = notifier
 
-    def register(self, name):
-        if self.repo.find(name):
-            print(f"  [核心] 用户 {name} 已存在")
+    def register(self, email, name):
+        print(f"[Core] UserService.register({email}, {name})")
+        if self.repo.find_by_email(email):
+            print("  [Core] 拒绝: 用户已存在")
             return False
-        self.repo.save({"name": name})
-        print(f"  [核心] 用户 {name} 注册成功")
+        user = {"email": email, "name": name}
+        self.repo.save(user)
+        self.notifier.send(email, "注册成功", f"{name}, 欢迎加入!")
+        print("  [Core] 注册完成")
         return True
 
 
-# --- 适配器1: 内存存储（开发/测试用） ---
-class InMemoryRepo(Repository):
+# --- Driving Adapter: REST 入站适配器 ---
+class RestController:
+    def __init__(self, service: UserService):
+        self.service = service
+
+    def post_register(self, email, name):
+        print(f"[REST] POST /api/users/register  {email}/{name}")
+        ok = self.service.register(email, name)
+        print(f"  [REST] HTTP {201 if ok else 409}")
+        return 201 if ok else 409
+
+
+# --- Driven Adapters: 出站适配器，实现端口 ---
+class JpaUserRepository(UserRepositoryPort):
     def __init__(self):
-        self._data = {}
+        self._db = {}
+
+    def find_by_email(self, email):
+        found = self._db.get(email)
+        print(f"  [JPA] find({email}) → {found or 'null'}")
+        return found
+
     def save(self, user):
-        self._data[user["name"]] = user
-        print(f"  [InMemory适配器] 存储: {user['name']}")
-    def find(self, name):
-        return self._data.get(name)
+        self._db[user["email"]] = user
+        print(f"  [JPA] save → {user['email']} 入库")
+
+class EmailNotifier(NotificationPort):
+    def send(self, email, subject, body):
+        print(f"  [Email] 发送 → {email}: [{subject}] {body}")
+
+class LogNotifier(NotificationPort):
+    """日志替代邮件（测试），核心零修改"""
+    def send(self, email, subject, body):
+        print(f"  [Log] 记录 → {email}: [{subject}] {body}")
 
 
-# --- 适配器2: 文件存储（生产环境用） ---
-class FileRepo(Repository):
-    """文件适配器 — 模拟持久化存储，核心代码无需任何修改"""
-    def __init__(self):
-        self._path = "_hex_demo_users.txt"
-        if os.path.exists(self._path):
-            os.remove(self._path)
-    def save(self, user):
-        with open(self._path, "a") as f:
-            f.write(user["name"] + "\n")
-        print(f"  [File适配器] 写入文件: {user['name']}")
-    def find(self, name):
-        try:
-            with open(self._path) as f:
-                names = [n.strip() for n in f]
-                return {"name": name} if name in names else None
-        except FileNotFoundError:
-            return None
+# --- Spring DI 组装 ---
+def bootstrap(prod=True):
+    """模拟 @SpringBootApplication: 适配器注入核心"""
+    repo = JpaUserRepository()
+    notifier = EmailNotifier() if prod else LogNotifier()
+    return RestController(UserService(repo, notifier))
 
-
-# --- 驱动适配器(Driving Adapter): 从外部调用核心 ---
-def cli_adapter(service):
-    """CLI驱动适配器 — 模拟用户输入调用核心，核心不知道被谁调用"""
-    for name in ["Bob", "Carol", "Bob"]:
-        print(f"[CLI驱动] 尝试注册: {name}")
-        service.register(name)
-
-
-# --- 运行演示 ---
 if __name__ == "__main__":
     print("=" * 50)
-    print("进阶演示：适配器替换 + 驱动适配器")
+    print("Spring Boot 六边形架构模拟")
     print("=" * 50 + "\n")
 
-    print("--- 使用内存适配器 ---")
-    cli_adapter(UserService(InMemoryRepo()))
-    print()
+    print("--- 生产: JPA + Email ---")
+    app = bootstrap(prod=True)
+    app.post_register("alice@test.com", "Alice")
+    app.post_register("alice@test.com", "Alice2")  # 重复
 
-    print("--- 切换为文件适配器（核心代码零修改）---")
-    service = UserService(FileRepo())
-    cli_adapter(service)
-
-    # 清理演示文件
-    if os.path.exists("_hex_demo_users.txt"):
-        os.remove("_hex_demo_users.txt")
-
-    print("\n--- 与基础示例对比 ---")
-    print("基础示例: 展示端口定义 + 适配器注入")
-    print("进阶示例: 同一端口两个适配器自由切换 + 驱动适配器从外部调用核心")
+    print("\n--- 开发: JPA + Log (换适配器，核心不变) ---")
+    app_dev = bootstrap(prod=False)
+    app_dev.post_register("bob@test.com", "Bob")

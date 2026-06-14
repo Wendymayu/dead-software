@@ -1,79 +1,99 @@
-"""Serverless 进阶示例：函数链式调用 + 冷启动
+"""Serverless 进阶示例：模拟 AWS Lambda 函数计算平台
 
-展示两个核心特性：
-1. 函数链：一个函数的输出作为事件触发下一个函数
-2. 冷启动：首次调用需要初始化环境，后续调用更快
+展示 AWS Lambda 的核心机制：
+- LambdaRuntime: 注册 handler，接收事件调用
+- 事件源: API Gateway(HTTP)、S3(文件)、SQS(消息)
+- 冷启动 vs 热启动: 首次慢，后续快
+- 函数链: Lambda A → 事件触发 → Lambda B
 """
 
 import time
 
 
-class ServerlessPlatform:
-    """模拟 FaaS 平台，支持函数链和冷启动"""
-
+class LambdaRuntime:
+    """模拟 AWS Lambda 运行时"""
     def __init__(self):
-        self._functions = {}
-        self._cold = {}  # name -> 是否处于冷状态
+        self._funcs = {}
+        self._cold = {}
 
-    def register(self, name, trigger, handler, init_time=0.0):
-        self._functions[name] = {"handler": handler, "trigger": trigger, "init_time": init_time}
-        self._cold[name] = True  # 新注册的函数处于冷状态
+    def register(self, name, handler, cold_time=0.05):
+        self._funcs[name] = (handler, cold_time)
+        self._cold[name] = True
+        print(f"[Lambda] 注册函数: {name}")
 
-    def invoke(self, event):
-        trigger_type = event["type"]
-        payload = event.get("payload", {})
-
-        for name, func in self._functions.items():
-            if func["trigger"] == trigger_type:
-                # 冷启动：首次调用需要初始化时间
-                if self._cold[name]:
-                    print(f"[Platform] 冷启动 '{name}' (初始化 {func['init_time']}s)")
-                    time.sleep(func["init_time"])
-                    self._cold[name] = False
-                else:
-                    print(f"[Platform] 热启动 '{name}' (无初始化延迟)")
-
-                result = func["handler"](payload)
-                print(f"  [{name}] 返回: {result}")
-
-                # 如果返回结果包含 trigger，自动链式触发下一个函数
-                if isinstance(result, dict) and "type" in result:
-                    print(f"  [Platform] 链式触发 → 事件类型: {result['type']}")
-                    self.invoke(result)
-
-                return result
-
-        return None
+    def invoke(self, name, event):
+        handler, cold_time = self._funcs.get(name, (None, 0))
+        if not handler:
+            print(f"[Lambda] 404: '{name}' 未注册")
+            return None
+        if self._cold[name]:
+            print(f"[Lambda] {name}: 冷启动 ({cold_time}s)")
+            time.sleep(cold_time)
+            self._cold[name] = False
+        else:
+            print(f"[Lambda] {name}: 热启动")
+        print(f"[Lambda] {name}: 处理事件 → {event}")
+        result = handler(event)
+        print(f"[Lambda] {name}: 返回 {result}")
+        return result
 
 
-def validate_order(payload):
-    """函数1：验证订单 → 输出触发下一步"""
-    order_id = payload.get("order_id", "unknown")
-    print(f"  [validate_order] 验证订单 {order_id} OK")
-    # 返回一个新事件，触发下一个函数（函数链）
-    return {"type": "queue", "payload": {"order_id": order_id, "status": "validated"}}
+class APIGatewayEvent:
+    """API Gateway 事件: HTTP 请求触发 Lambda"""
+    def __init__(self, path, method="GET", body=None):
+        self.path, self.method, self.body = path, method, body or {}
+        print(f"  [API Gateway] {method} {path} → 触发 Lambda")
+
+    def __repr__(self):
+        return f"{self.method} {self.path}"
 
 
-def pack_order(payload):
-    """函数2：打包订单（被上一个函数的输出触发）"""
-    order_id = payload.get("order_id", "unknown")
-    print(f"  [pack_order] 打包订单 {order_id}")
-    return f"订单 {order_id}: 已验证 -> 已打包 OK"
+class S3Event:
+    """S3 事件: 文件上传触发 Lambda"""
+    def __init__(self, bucket, key):
+        self.bucket, self.key = bucket, key
+        print(f"  [S3] {bucket}/{key} 上传 → 触发 Lambda")
+
+    def __repr__(self):
+        return f"s3://{self.bucket}/{self.key}"
 
 
-# --- 运行演示 ---
+class SQSEvent:
+    """SQS 事件: 消息队列触发 Lambda"""
+    def __init__(self, message):
+        self.message = message
+        print(f"  [SQS] 消息: '{message}' → 触发 Lambda")
+
+    def __repr__(self):
+        return self.message
+
+
+# --- Handler 函数 ---
+def api_handler(event):
+    return f"响应: {event.path} → {event.body}"
+
+def s3_handler(event):
+    print(f"  [handler] 处理文件 {event.key} → 发送到 SQS")
+    return f"已处理 {event.key}"
+
+def sqs_handler(event):
+    return f"已消费: '{event.message}'"
+
+
 if __name__ == "__main__":
-    platform = ServerlessPlatform()
+    rt = LambdaRuntime()
+    rt.register("api-handler", api_handler, cold_time=0.06)
+    rt.register("s3-handler", s3_handler, cold_time=0.08)
+    rt.register("sqs-handler", sqs_handler, cold_time=0.03)
+
     print("=" * 50)
-    print("进阶演示: 函数链 + 冷启动")
+    print("AWS Lambda Serverless 模拟")
     print("=" * 50 + "\n")
 
-    # 注册函数，设置冷启动初始化时间
-    platform.register("validate_order", "http", validate_order, init_time=0.05)
-    platform.register("pack_order", "queue", pack_order, init_time=0.08)
+    print("--- API Gateway: 冷启动 → 热启动 ---")
+    rt.invoke("api-handler", APIGatewayEvent("/users", "GET", {"id": 1}))
+    rt.invoke("api-handler", APIGatewayEvent("/users", "GET", {"id": 2}))
 
-    print("--- 第一次调用（冷启动）---")
-    platform.invoke({"type": "http", "payload": {"order_id": "O-201"}})
-
-    print("\n--- 第二次调用（热启动，无延迟）---")
-    platform.invoke({"type": "http", "payload": {"order_id": "O-202"}})
+    print("\n--- S3 → SQS 函数链 ---")
+    rt.invoke("s3-handler", S3Event("data-bucket", "report.csv"))
+    rt.invoke("sqs-handler", SQSEvent("report.csv 已处理"))
