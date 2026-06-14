@@ -72,6 +72,16 @@ python advanced.py
 - 推理质量依赖 LLM 能力——思考步骤可能不准确或遗漏
 - 工具描述必须清晰——LLM 需要理解工具用途才能正确选择
 
+## 业界实例
+
+ReAct 模式是当今最成功的 AI Agent 产品的核心架构。**Claude Code** 的整个执行循环就是 ReAct 的教科书级实现——每次交互，它先思考要做什么（Thought），选择一个工具执行（Action），观察执行结果（Observation），然后基于结果继续推理。比如修复一个 bug：Thought（"需要查看错误日志"）→ Action（bash: `cat error.log`）→ Observation（"发现 NullPointerException 在第 42 行"）→ Thought（"需要查看第 42 行的代码"）→ Action（read: `file.py:42`）→ Observation（"变量未初始化"）→ Thought（"添加初始化语句"）→ Action（edit: 添加初始化代码）→ 完成。每一步思考都基于前一步的观察结果，每一步行动都由思考驱动——这就是 ReAct 的闭环在真实产品中的运转方式。Claude Code 还在 ReAct 循环中加入了人类把关：执行 bash 命令或写入文件前弹出权限确认，让 Human-in-the-Loop 成为 ReAct 循环的安全阀。
+
+**AutoGPT** 是 ReAct 模式在自主 Agent 中的标志性应用。它接收用户的高层目标后，进入持续的 Thought → Action → Observation 循环：Thought 分析当前状态和下一步需要做什么，Action 调用工具（搜索引擎、文件读写、代码执行等），Observation 收集工具返回的信息，然后再次 Thought 决定后续行动。AutoGPT 的独特之处在于循环可以持续多轮——它不会在第一次观察后就给出答案，而是反复推理和行动，直到认为信息足够完整才输出最终结论。这种长循环既是优势（能处理复杂多步任务），也是风险（可能无限循环，需要最大步数限制）。
+
+**LangChain/LangGraph** 的 ReAct Agent 是开发者最常使用的 ReAct 实现。LangGraph 用状态图（State Graph）显式建模 Thought → Action → Observation 的循环：每个节点是一个推理步骤或工具调用，边定义了状态转换规则。开发者可以可视化地看到 ReAct 循环的完整拓扑，调试时能精确定位哪个步骤出了问题。LangChain 的经典 `create_react_agent` 函数把工具描述、LLM、推理模板封装为一个可复用的 Agent，让 ReAct 从论文概念变成了工程组件。
+
+这些产品证明了一个关键洞察：**ReAct 不是理论，而是实践**。最好的 AI Agent 不是一次性给出答案，而是像人类专家一样——先想、再查、再想、再做，每一步都基于上一步的结果调整策略。ReAct 的闭环让 Agent 从"回答问题"进化到"解决问题"。
+
 ## 真实项目中的应用
 
 - **LangChain ReAct Agent** — 最流行的 ReAct 实现，支持多种工具和 LLM

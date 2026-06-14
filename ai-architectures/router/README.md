@@ -74,6 +74,16 @@ python advanced.py
 - 边界模糊的意图难以分类——跨领域查询可能导致路由犹豫
 - 增加系统复杂度——分类+分发+回退机制使架构更复杂
 
+## 业界实例
+
+Router 模式在多 Agent 系统中扮演"交通指挥"的角色，决定每个请求该交给谁处理。**CrewAI** 是 Router 模式最直观的工业实现——它围绕"角色"构建 Agent 团队：研究员（Researcher）负责信息搜集，作者（Writer）负责内容创作，审核员（Reviewer）负责质量把关。CrewAI 的任务流转机制就是 Router：每个任务有明确的"负责人"属性，Router 根据任务类型和 Agent 角色描述将任务分配给最匹配的 Agent。当研究员完成信息搜集后，结果自动流转给作者，作者完成后再流转给审核员——每一步流转都是一次路由决策。CrewAI 还支持动态路由：如果审核员发现质量不达标，可以把任务路由回作者重新处理，形成反馈闭环。
+
+**Claude Code** 的工具选择机制本质上是微型的 Router。Claude Code 注册了多种工具（Bash、Read、Write、Edit、Grep、Glob、Agent），每次 Thought 阶段就是一个路由决策——"这个子任务该用哪个工具？"需要搜索代码时路由到 Grep，需要读取文件时路由到 Read，需要修改代码时路由到 Edit，需要执行命令时路由到 Bash，需要多步探索时路由到 Agent 子代理。Claude Code 的 LLM 根据工具描述（每个工具都有详细的功能说明和使用场景）进行意图匹配，选择最合适的工具——这与 Router 的 Classifier → Handler 映射完全一致。当 LLM 对工具选择不确定时，它会回退到更通用的策略（如先用 Grep 搜索再决定下一步），这对应了 Router 的置信度回退机制。
+
+**LangChain/LangGraph** 的 Router Chain 是开发者最常用的路由组件。LangChain 的 `RouterChain` 根据输入查询的意图，从多条候选 Chain 中选择最合适的一条执行——这就像客服热线先听你说什么，再转接到对应部门。LangGraph 进一步升级了路由能力：用条件边（Conditional Edge）在状态图中实现动态路由，节点可以根据当前状态决定下一步走哪条路径。一个典型的 LangGraph Router 应用：用户提问 → 分类节点判断是代码问题还是概念问题 → 代码问题路由到代码生成子图 → 概念问题路由到知识检索子图 → 各子图独立处理后返回结果。这种路由让一个 Agent 系统可以处理多种类型的请求，每种请求由专精的处理流程负责。
+
+这些产品揭示了 Router 的工程关键：**分类质量决定路由质量**。CrewAI 的角色描述越清晰，任务分配就越精准；Claude Code 的工具描述越详细，工具选择就越准确；LangChain Router Chain 的意图模板越具体，分类就越可靠。Router 的缺点——"分类错误导致路由到错误处理器"——在这些产品中直接体现为：角色描述不清时 CrewAI 把研究任务分配给作者，工具描述模糊时 Claude Code 用 Grep 去做应该用 Read 的事。
+
 ## 真实项目中的应用
 
 - **Semantic Router** — 基于语义相似度的意图路由库，用 embedding 匹配路由到对应处理链
