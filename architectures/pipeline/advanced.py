@@ -1,77 +1,76 @@
-"""管道架构进阶示例：分支管道与错误处理
+"""管道架构进阶示例：模拟 OpenTelemetry Collector 管道
 
-展示更复杂的管道场景：
-- 分支管道：根据条件选择不同处理路径
-- 错误处理：某个阶段失败后的处理策略
+展示 OTEL Collector 的核心数据流：
+Receiver → Processor → Exporter
+指标数据依次经过接收、处理、导出三个阶段。
 """
 
 
-def validate(data):
-    errors = []
-    if not data.get("text"):
-        errors.append("缺少文本")
-    if len(data.get("text", "")) < 3:
-        errors.append("文本过短")
-    data["errors"] = errors
-    data["valid"] = len(errors) == 0
-    return data
+# --- Receiver：接收原始指标数据 ---
+class MetricReceiver:
+    """模拟 OTEL Receiver，解析传入的指标字符串"""
+
+    def receive(self, raw: str) -> dict:
+        name, value = raw.split("=")
+        metric = {"name": name, "value": float(value), "attributes": {}}
+        print(f"[Receiver] 接收指标: {name}={value}")
+        return metric
 
 
-def route(data):
-    """根据语言分支到不同处理管道"""
-    text = data.get("text", "")
-    if any(ord(c) > 0x4E00 for c in text):
-        data["route"] = "chinese"
-    else:
-        data["route"] = "english"
-    return data
+# --- Processor：添加属性 + 过滤 ---
+class Processor:
+    """模拟 OTEL Processor，为指标添加属性并过滤低值"""
+
+    def __init__(self, min_value=0, extra_attrs=None):
+        self.min_value = min_value
+        self.extra_attrs = extra_attrs or {"env": "production", "region": "cn-east"}
+
+    def process(self, metric: dict) -> dict | None:
+        metric["attributes"] = self.extra_attrs
+        print(f"[Processor] 添加属性: {metric['attributes']}")
+        if metric["value"] < self.min_value:
+            print(f"[Processor] 过滤低值指标: {metric['name']}={metric['value']}")
+            return None
+        print(f"[Processor] 保留指标: {metric['name']}={metric['value']}")
+        return metric
 
 
-def process_chinese(data):
-    data["processed"] = f"[中文处理] {data['text']}"
-    return data
+# --- Exporter：输出到目标 ---
+class ConsoleExporter:
+    """模拟 OTEL Exporter，将处理后的指标输出到控制台"""
+
+    def export(self, metric: dict) -> None:
+        print(f"[Exporter] 导出 → name={metric['name']} "
+              f"value={metric['value']} attrs={metric['attributes']}")
 
 
-def process_english(data):
-    data["processed"] = f"[英文处理] {data['text'].upper()}"
-    return data
+# --- Pipeline：串联三个阶段 ---
+class Pipeline:
+    """OTEL Collector 管道：Receiver → Processor → Exporter"""
+
+    def __init__(self, receiver, processor, exporter):
+        self.receiver = receiver
+        self.processor = processor
+        self.exporter = exporter
+
+    def run(self, raw_metrics: list[str]):
+        print("=" * 50)
+        print("OTEL Collector 管道: Receiver → Processor → Exporter")
+        print("=" * 50)
+        for raw in raw_metrics:
+            print(f"\n--- 处理: '{raw}' ---")
+            metric = self.receiver.receive(raw)
+            processed = self.processor.process(metric)
+            if processed:
+                self.exporter.export(processed)
+            else:
+                print("[Pipeline] 数据被过滤，未导出")
 
 
-def error_handler(data):
-    """错误处理阶段"""
-    if data.get("errors"):
-        print(f"  [错误处理] 发现错误: {data['errors']}")
-        data["processed"] = f"[错误] {', '.join(data['errors'])}"
-    return data
-
-
-def run_pipeline(data, stages):
-    for stage in stages:
-        print(f"  → {stage.__name__}")
-        data = stage(data)
-    return data
-
-
-# --- 运行演示 ---
 if __name__ == "__main__":
-    print("=" * 50)
-    print("进阶演示：分支管道 + 错误处理")
-    print("=" * 50 + "\n")
-
-    # 英文文本
-    print("--- 英文路径 ---")
-    result = run_pipeline({"text": "hello world"},
-                          [validate, route, process_english])
-    print(f"  结果: {result}\n")
-
-    # 中文文本
-    print("--- 中文路径 ---")
-    result = run_pipeline({"text": "你好世界"},
-                          [validate, route, process_chinese])
-    print(f"  结果: {result}\n")
-
-    # 错误数据
-    print("--- 错误路径 ---")
-    result = run_pipeline({"text": "ab"},
-                          [validate, error_handler])
-    print(f"  结果: {result}")
+    pipeline = Pipeline(
+        MetricReceiver(),
+        Processor(min_value=5),
+        ConsoleExporter(),
+    )
+    pipeline.run(["cpu.usage=78.5", "mem.free=2.1", "disk.io=45.0"])

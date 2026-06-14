@@ -1,63 +1,88 @@
-"""事件驱动架构进阶示例：事件过滤与链式处理
+"""事件驱动架构进阶示例：模拟 Redis Pub/Sub
 
-展示事件驱动的更复杂场景：
-- 事件过滤：订阅者可以只接收符合条件的事件
-- 链式处理：一个事件的处理结果可以触发新事件
+展示 Redis 发布订阅的核心机制：
+- 频道订阅与消息发布
+- 多订阅者接收同一频道消息
+- 模式订阅(PATTERN)支持通配符匹配
 """
 
 
-class EventBus:
+# --- Redis Pub/Sub 实现 ---
+class RedisPubSub:
+    """模拟 Redis Pub/Sub：频道订阅 + 模式订阅"""
+
     def __init__(self):
-        self._subscribers = {}
+        self._channels = {}   # channel -> [subscriber_callbacks]
+        self._patterns = []   # [(pattern, callback)]
 
-    def subscribe(self, event_type, handler, filter_fn=None):
-        if event_type not in self._subscribers:
-            self._subscribers[event_type] = []
-        self._subscribers[event_type].append((handler, filter_fn))
+    def subscribe(self, channel: str, callback):
+        """订阅指定频道（精确匹配）"""
+        if channel not in self._channels:
+            self._channels[channel] = []
+        self._channels[channel].append(callback)
+        print(f"[SUBSCRIBE] 订阅频道: {channel}")
 
-    def publish(self, event_type, data):
-        print(f"  [EventBus] 事件 '{event_type}': {data}")
-        for handler, filter_fn in self._subscribers.get(event_type, []):
-            if filter_fn is None or filter_fn(data):
-                handler(data)
+    def psubscribe(self, pattern: str, callback):
+        """模式订阅（通配符匹配：* 匹配任意段）"""
+        self._patterns.append((pattern, callback))
+        print(f"[PSUBSCRIBE] 模式订阅: {pattern}")
+
+    def publish(self, channel: str, message: str):
+        """发布消息：先匹配精确频道，再匹配模式订阅"""
+        print(f"[PUBLISH] 频道={channel} 消息='{message}'")
+        count = 0
+        # 精确频道订阅者
+        for cb in self._channels.get(channel, []):
+            cb(channel, message)
+            count += 1
+        # 模式订阅匹配
+        for pattern, cb in self._patterns:
+            if self._match_pattern(pattern, channel):
+                cb(pattern, channel, message)
+                count += 1
+        print(f"  → 共 {count} 个订阅者收到消息")
+
+    def _match_pattern(self, pattern: str, channel: str) -> bool:
+        """简单通配符：* 匹配任意字符"""
+        import fnmatch
+        return fnmatch.fnmatch(channel, pattern)
 
 
-# --- 事件处理链 ---
-def validate_order(data):
-    if data.get("amount", 0) > 0:
-        print(f"    [验证] 订单有效: {data['user']}, 金额={data['amount']}")
-    else:
-        print(f"    [验证] 订单无效: 金额为0")
+# --- 订阅者回调 ---
+def log_subscriber(channel: str, message: str):
+    print(f"  [日志订阅者] 频道={channel} 消息='{message}'")
+
+def alert_subscriber(channel: str, message: str):
+    print(f"  [告警订阅者] 频道={channel} 消息='{message}'")
+
+def pattern_sub(pattern: str, channel: str, message: str):
+    print(f"  [模式订阅者] 匹配={pattern} 实际频道={channel} 消息='{message}'")
 
 
-def on_order_valid(data):
-    print(f"    [处理] 执行订单: {data['user']}")
-
-
-# --- 过滤函数：只处理大额订单 ---
-def is_large_order(data):
-    return data.get("amount", 0) >= 100
-
-
-def vip_handler(data):
-    print(f"    [VIP处理] 大额订单特殊处理: {data['user']}, 金额={data['amount']}")
-
-
-# --- 运行演示 ---
 if __name__ == "__main__":
-    bus = EventBus()
+    redis = RedisPubSub()
 
     print("=" * 50)
-    print("进阶演示：事件过滤 + 链式处理")
+    print("Redis Pub/Sub: 频道订阅 + 模式订阅")
     print("=" * 50 + "\n")
 
-    bus.subscribe("order_created", validate_order)
-    bus.subscribe("order_created", on_order_valid)
-    bus.subscribe("order_created", vip_handler, filter_fn=is_large_order)
+    # 精确订阅
+    print("--- 精确订阅 ---")
+    redis.subscribe("news.tech", log_subscriber)
+    redis.subscribe("news.tech", alert_subscriber)
+    redis.subscribe("news.sports", log_subscriber)
 
-    print("--- 小额订单 ---")
-    bus.publish("order_created", {"user": "Alice", "amount": 50})
-    print()
+    # 模式订阅
+    print("\n--- 模式订阅 ---")
+    redis.psubscribe("news.*", pattern_sub)
+    redis.psubscribe("alert.*", pattern_sub)
 
-    print("--- 大额订单（触发VIP处理）---")
-    bus.publish("order_created", {"user": "Bob", "amount": 200})
+    # 发布消息
+    print("\n--- 发布到 news.tech ---")
+    redis.publish("news.tech", "新框架发布v2.0")
+
+    print("\n--- 发布到 news.sports ---")
+    redis.publish("news.sports", "中国队获胜")
+
+    print("\n--- 发布到 alert.cpu ---")
+    redis.publish("alert.cpu", "CPU使用率超过90%")

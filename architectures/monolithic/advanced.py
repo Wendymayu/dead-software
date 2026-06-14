@@ -1,91 +1,94 @@
-"""单体架构进阶示例：模块化单体 (Modular Monolith)
-
-展示单体架构的最佳实践：
-- 仍然是一个部署单元
-- 但内部按模块划分边界，每个模块有自己的数据和接口
-- 模块间通过明确接口通信，不直接访问彼此数据
-- 为未来拆分为微服务做准备
-"""
+"""单体架构进阶示例：模拟 WordPress 单体结构
+展示 WordPress 的单体+插件机制：
+一个类同时处理路由、模板、数据库、认证、内容管理，插件通过钩子扩展功能。"""
 
 
-class UserModule:
-    """用户模块：封装用户相关所有逻辑和数据"""
+# --- WordPress 单体应用 ---
+class WordPressApp:
+    """模拟 WordPress：路由+模板+数据库+认证+内容 全在一个类"""
 
     def __init__(self):
-        self._users = {"alice": {"name": "Alice", "age": 30}}
+        self._db = {"posts": [], "users": {"admin": {"password": "p@ss", "role": "admin"}}}
+        self._hooks = {"actions": {}, "filters": {}}
 
-    def get_user(self, user_id):
-        """公开接口：只返回必要信息，不暴露内部数据结构"""
-        user = self._users.get(user_id)
-        if user:
-            return {"name": user["name"], "age": user["age"]}
-        return None
+    # --- 钩子系统：单体内的扩展机制 ---
+    def add_action(self, hook_name: str, callback):
+        """注册动作钩子（如 'init', 'publish_post'）"""
+        self._hooks["actions"].setdefault(hook_name, []).append(callback)
 
-    def update_age(self, user_id, new_age):
-        if user_id in self._users:
-            self._users[user_id]["age"] = new_age
-            return True
-        return False
+    def add_filter(self, hook_name: str, callback):
+        """注册过滤器钩子（修改数据，如 'the_content'）"""
+        self._hooks["filters"].setdefault(hook_name, []).append(callback)
+
+    def _do_action(self, hook_name: str, *args):
+        for cb in self._hooks["actions"].get(hook_name, []):
+            cb(*args)
+
+    def _apply_filters(self, hook_name: str, value):
+        for cb in self._hooks["filters"].get(hook_name, []):
+            value = cb(value)
+        return value
+
+    # --- 路由 ---
+    def route(self, path: str, **kwargs) -> str:
+        print(f"[路由] 请求路径: {path}")
+        self._do_action("init")
+        if path == "/post/new":
+            return self.create_post(**kwargs)
+        elif path == "/post/list":
+            return self.list_posts()
+        return "404 未找到"
+
+    # --- 用户认证 ---
+    def _authenticate(self, username: str) -> bool:
+        print(f"[认证] 检查用户: {username}")
+        return username in self._db["users"]
+
+    # --- 内容管理 ---
+    def create_post(self, title: str, content: str, author: str = "admin") -> str:
+        if not self._authenticate(author):
+            return "未授权"
+        content = self._apply_filters("the_content", content)
+        post = {"title": title, "content": content, "author": author}
+        self._db["posts"].append(post)
+        self._do_action("publish_post", post)
+        return self._render("post_detail", post)
+
+    def list_posts(self) -> str:
+        return self._render("post_list", {"posts": self._db["posts"]})
+
+    # --- 模板渲染 ---
+    def _render(self, template: str, data: dict) -> str:
+        print(f"[模板] 渲染: {template}")
+        if template == "post_detail":
+            return f"<h1>{data['title']}</h1><p>{data['content']}</p>"
+        elif template == "post_list":
+            items = "".join(f"<li>{p['title']}</li>" for p in data["posts"])
+            return f"<ul>{items}</ul>"
+        return ""
 
 
-class OrderModule:
-    """订单模块：只依赖 UserModule 的公开接口，不直接访问其数据"""
+# --- 插件：通过钩子扩展单体 ---
+def seo_plugin(content: str) -> str:
+    """过滤器插件：为内容添加SEO元数据"""
+    return f"{content}\n<meta name='seo'>已优化"
 
-    def __init__(self, user_module):
-        self.user_module = user_module  # 通过接口依赖，不是数据依赖
-        self._orders = []
-
-    def create_order(self, user_id, item):
-        user = self.user_module.get_user(user_id)  # 只用公开接口
-        if not user:
-            print(f"  [OrderModule] 用户不存在: {user_id}")
-            return None
-        order = {"user_name": user["name"], "item": item}
-        self._orders.append(order)
-        print(f"  [OrderModule] 订单创建: {user['name']} - {item}")
-        return order
-
-    def list_orders(self):
-        return self._orders
+def notify_plugin(post: dict):
+    """动作插件：发布文章时发送通知"""
+    print(f"[通知插件] 文章已发布: {post['title']}")
 
 
-class ModularMonolithApp:
-    """模块化单体：统一部署，但内部有清晰模块边界"""
-
-    def __init__(self):
-        self.users = UserModule()
-        self.orders = OrderModule(self.users)  # 模块间通过接口连接
-
-    def show_user(self, user_id):
-        user = self.users.get_user(user_id)
-        if user:
-            print(f"[App] 用户: {user['name']}, 年龄 {user['age']}")
-        else:
-            print(f"[App] 用户不存在: {user_id}")
-
-    def create_order(self, user_id, item):
-        self.orders.create_order(user_id, item)
-
-    def list_orders(self):
-        print("[App] 订单列表:")
-        for o in self.orders.list_orders():
-            print(f"  - {o['user_name']}: {o['item']}")
-
-
-# --- 运行演示 ---
 if __name__ == "__main__":
-    app = ModularMonolithApp()
+    wp = WordPressApp()
 
-    print("=" * 50)
-    print("进阶演示：模块化单体 — 单一部署 + 内部模块边界")
-    print("=" * 50 + "\n")
+    print("=" * 50 + "\nWordPress单体: 路由+认证+内容+模板+钩子\n" + "=" * 50)
+    wp.add_filter("the_content", seo_plugin)
+    wp.add_action("publish_post", notify_plugin)
 
-    app.show_user("alice")
-    app.create_order("alice", "Python书")
-    app.create_order("unknown", "不存在")  # 模块边界保护
-    app.list_orders()
+    # 创建文章
+    print("\n--- 创建文章 ---")
+    print(wp.route("/post/new", title="Python架构", content="分层设计很重要"))
 
-    print("\n--- 与基础单体对比 ---")
-    print("基础单体: 所有代码在一个类，直接访问内部数据")
-    print("模块化单体: 模块间通过接口通信，不直接访问彼此数据")
-    print("         未来拆分微服务时，每个模块可独立抽出")
+    # 列出文章
+    print("\n--- 列出文章 ---")
+    print(wp.route("/post/list"))
