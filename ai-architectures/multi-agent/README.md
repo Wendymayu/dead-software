@@ -66,9 +66,15 @@ python advanced.py
 - 可能重复工作或冲突——多个Agent可能产出矛盾的结果
 - 调试困难——出问题时，是哪个Agent的错？需要逐个排查
 
-## 真实项目中的应用
+## 业界实例
 
-- **CrewAI** — 规角驱动的多Agent框架，每个Agent有明确角色和目标，协调者自动编排任务流程
+Multi-Agent 模式在主流 Agent 产品中最典型的实现是 **Devin**（Cognition Labs）。Devin 内部将编码任务拆分为多个专精 Agent：一个负责浏览网页收集信息和理解需求，一个负责编写和修改代码，一个负责运行测试并验证结果，还有一个负责审查代码质量。这些 Agent 通过共享的工作空间（浏览器状态、代码编辑器、终端输出）协作，前一个 Agent 的产出自然成为下一个 Agent 的输入。这种分工让 Devin 能处理复杂的端到端软件开发任务，从理解需求到交付可用代码。
+
+在多 Agent 框架层面，**CrewAI** 采用角色驱动的 Crew 模式：每个 Agent 有明确的角色（如 Researcher、Writer、Reviewer）、目标和工具集。Crew 按流程编排任务——Researcher 调用搜索工具收集信息，Writer 根据研究结果撰写内容，Reviewer 审核质量并反馈修改意见。这种"研究→撰写→审核"的流水线式协作模拟了人类团队的工作方式。**AutoGPT** 则在不同子任务间分派不同的子 Agent：规划 Agent 分解目标，执行 Agent 逐项完成，评估 Agent 检验结果是否达标，未达标则触发新一轮规划，形成跨 Agent 的反思闭环。
+
+MCP 协议本质上也是一种 Multi-Agent 思路——**Claude Code + MCP** 采用的是客户端-服务器模型，其中 MCP Server 就像专精 Agent：数据库 Server 专精数据查询，GitHub Server 专精代码仓库操作，浏览器 Server 专精网页浏览。Claude Code 作为协调者（MCP Client），根据任务需要动态连接不同的 Server，调用其专精能力完成子任务。这种模式与 CrewAI 的角色分配逻辑类似，但通过标准化协议实现——任何 MCP Server 都能被任何 MCP Client 发现和调用，无需定制集成代码。
+
+## 真实项目中的应用 — 规角驱动的多Agent框架，每个Agent有明确角色和目标，协调者自动编排任务流程
 - **AutoGen (Microsoft)** — 多Agent对话框架，Agent之间通过对话协商完成任务
 - **LangGraph multi-agent** — LangGraph 的多Agent模式，用图结构编排Agent间的消息流
 - **Devin** — 多Agent编码系统，不同Agent负责规划、编码、测试、调试

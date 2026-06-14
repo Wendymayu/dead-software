@@ -74,9 +74,15 @@ python advanced.py
 - 安全问题——工具可访问敏感数据（数据库、文件系统），权限控制至关重要
 - 不是所有 LLM 都支持——目前主要是 Claude 生态，其他模型正在跟进
 
-## 真实项目中的应用
+## 业界实例
 
-- **Anthropic Claude** — 原生支持 MCP，Claude 模型和 API 直接连接 MCP Server 使用工具和资源
+MCP 协议在主流 Agent 产品中最核心的实现在 **Claude Code**。Claude Code 是 MCP 协议的首个大规模生产级应用：作为 MCP Client，它可以连接多种 MCP Server 来获取专精能力——连接 PostgreSQL Server 查询数据库、连接 GitHub Server 操作代码仓库、连接浏览器 Server 访问网页信息、连接文件系统 Server 读写本地文件。Claude Code 启动时自动发现已配置 Server 的工具列表，运行中根据任务需要动态选择和调用工具，整个过程通过标准 JSON-RPC 协议完成，无需为任何工具写定制集成代码。这是 MCP "即插即用"理念的最佳验证。
+
+在 IDE 和编辑器生态中，MCP 正在快速扩展。**Cursor** 已经开始添加 MCP 支持，让 AI 编程助手通过标准协议接入外部工具和数据源，而不是依赖自有的插件系统。**VS Code** 和 **JetBrains** 系列 IDE 也正在集成 MCP，将 MCP Server 作为 AI 工具的标准接入方式。这意味着同一个 MCP Server（比如一个数据库查询工具）可以被 Claude Code、Cursor、VS Code 等多个客户端同时使用——工具一次实现，多处复用，这正是 MCP 标准化协议的核心价值。
+
+在 MCP Server 社区层面，已经形成了丰富的开源生态。数据库类 Server 覆盖 PostgreSQL、SQLite、MySQL 等主流数据库；API 类 Server 连接 GitHub、Slack、Jira 等开发工具；文件系统类 Server 提供安全的本地文件读写能力；还有浏览器自动化、搜索引擎、知识库检索等专用 Server。开发者可以按需组合多个 Server，为 Agent 构建定制化的工具集。**LangChain/LangGraph** 也在适配 MCP 协议，将 MCP Server 作为其 Agent 工具链的标准接入点，让 LangGraph 编排的 Agent 能通过 MCP 获取外部能力，进一步扩大了 MCP 的应用范围。
+
+## 真实项目中的应用 — 原生支持 MCP，Claude 模型和 API 直接连接 MCP Server 使用工具和资源
 - **Claude Code CLI** — 开发者工具链通过 MCP 接入外部工具（数据库查询、文件操作、API 调用等）
 - **MCP Server 社区** — 大量开源 MCP Server 实现覆盖数据库（PostgreSQL、SQLite）、文件系统、GitHub API、Slack 等
 - **各类 IDE 和编辑器** — VS Code、Cursor 等开始集成 MCP，让 AI 编程助手通过标准协议接入工具
