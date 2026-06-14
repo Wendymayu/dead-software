@@ -1,100 +1,99 @@
-"""插件架构进阶示例：自动发现 + 插件生命周期
+"""插件架构进阶示例：模拟 VS Code 扩展系统
 
-展示插件架构的进阶能力：
-- 自动发现：扫描已注册插件，无需手动配置
-- 生命周期：初始化 → 执行 → 清理
-- 插件优先级和链式执行
+展示 VS Code 的核心插件架构：
+- ExtensionRegistry：扩展注册能力（命令/语言/主题）
+- 濒加载：扩展仅在激活事件触发时才初始化
+- PythonLintExtension 注册命令和语言支持，打开 .py 文件时激活
 """
 
+class Extension:
+    """VS Code 扩展：声明能力与激活条件"""
+    def __init__(self, name, capabilities, activation_on):
+        self._name, self._capabilities, self._activation_on = name, capabilities, activation_on
+        self._activated = False
 
-# --- 插件接口：增加生命周期方法 ---
-class PluginInterface:
-    def name(self):
-        raise NotImplementedError
+    def activate(self):
+        if self._activated: return
+        self._activated = True
+        print(f"[Extension:{self._name}] 濒加载激活! 贡献:")
+        for cap_type, items in self._capabilities.items():
+            for item in items: print(f"  + {cap_type}: {item}")
 
-    def priority(self):
-        return 0  # 默认优先级，数值越小越先执行
-
-    def initialize(self):
-        print(f"  [{self.name()}] 初始化完成")
-
-    def execute(self, data):
-        raise NotImplementedError
-
-    def teardown(self):
-        print(f"  [{self.name()}] 清理完成")
+    def can_activate(self, event):
+        return event in self._activation_on and not self._activated
 
 
-# --- 注册表：自动发现 + 生命周期管理 + 链式执行 ---
-class PluginRegistry:
+class CoreEditor:
+    """VS Code 核心编辑器：触发事件，调度扩展"""
+    LANG_MAP = {"py": "python", "js": "javascript", "java": "java", "ts": "typescript"}
+
     def __init__(self):
-        self._plugins = []
+        self._registry = ExtensionRegistry()
 
-    def discover_and_register(self, plugins):
-        """自动发现并注册一批插件"""
-        print("[Registry] 自动发现插件...")
-        for p in plugins:
-            self._plugins.append(p)
-            print(f"  发现: {p.name()} (优先级: {p.priority()})")
-        # 按优先级排序
-        self._plugins.sort(key=lambda p: p.priority())
+    def install(self, ext):
+        self._registry.register(ext)
 
-    def initialize_all(self):
-        print("[Registry] 初始化所有插件...")
-        for p in self._plugins:
-            p.initialize()
+    def open_file(self, filename):
+        """打开文件——触发激活事件"""
+        ext = filename.split(".")[-1]
+        lang = self.LANG_MAP.get(ext, ext)
+        print(f"\n[CoreEditor] 打开文件: {filename} (语言: {lang})")
+        self._registry.trigger_event(f"onLanguage:{lang}")
 
-    def execute_chain(self, data):
-        """链式执行：数据依次通过所有插件"""
-        print(f"[Registry] 链式处理: {data}")
-        result = data
-        for p in self._plugins:
-            print(f"  → 经过 {p.name()}")
-            result = p.execute(result)
-        return result
-
-    def teardown_all(self):
-        print("[Registry] 清理所有插件...")
-        for p in self._plugins:
-            p.teardown()
+    def run_command(self, cmd_id):
+        ext_name = self._registry._commands.get(cmd_id)
+        if ext_name:
+            print(f"[CoreEditor] 执行命令 '{cmd_id}' (由 {ext_name} 提供)")
+        else:
+            print(f"[CoreEditor] 命令 '{cmd_id}' 未注册")
 
 
-# --- 具体插件 ---
-class ValidatePlugin(PluginInterface):
-    def name(self): return "validate"
-    def priority(self): return 1  # 最先执行
-    def execute(self, data):
-        print(f"    [Validate] 检查: '{data}' 非空")
-        return data.strip()
+class ExtensionRegistry:
+    """扩展注册表：管理扩展、发现能力"""
+    def __init__(self):
+        self._extensions, self._commands, self._languages = [], {}, {}
+
+    def register(self, ext):
+        self._extensions.append(ext)
+        print(f"[Registry] 发现扩展: {ext._name} (激活条件: {ext._activation_on})")
+
+    def trigger_event(self, event):
+        print(f"[Registry] 触发激活事件: {event}")
+        for ext in self._extensions:
+            if ext.can_activate(event):
+                ext.activate()
+                self._collect(ext)
+
+    def _collect(self, ext):
+        for cap_type, items in ext._capabilities.items():
+            target = {"commands": self._commands, "languages": self._languages}.get(cap_type)
+            if target is not None:
+                for item in items: target[item] = ext._name
 
 
-class TransformPlugin(PluginInterface):
-    def name(self): return "transform"
-    def priority(self): return 2
-    def execute(self, data):
-        print(f"    [Transform] 转大写: '{data}'")
-        return data.upper()
+class PythonLintExtension(Extension):
+    """Python 代码检查扩展：注册命令和语言支持"""
+    def __init__(self):
+        super().__init__("python-lint",
+            {"commands": ["python.lint", "python.format"], "languages": ["python"]},
+            ["onLanguage:python"])
 
 
-class OutputPlugin(PluginInterface):
-    def name(self): return "output"
-    def priority(self): return 3  # 最后执行
-    def execute(self, data):
-        print(f"    [Output] 输出: '{data}'")
-        return f"RESULT: {data}"
-
-
-# --- 运行演示 ---
 if __name__ == "__main__":
-    registry = PluginRegistry()
-
     print("=" * 50)
-    print("进阶演示: 自动发现 + 生命周期 + 链式执行")
+    print("进阶演示: 模拟 VS Code 扩展系统")
     print("=" * 50 + "\n")
 
-    registry.discover_and_register([ValidatePlugin(), TransformPlugin(), OutputPlugin()])
-    registry.initialize_all()
-    print()
-    result = registry.execute_chain("  hello world  ")
-    print(f"\n最终结果: {result}")
-    registry.teardown_all()
+    editor = CoreEditor()
+    editor.install(PythonLintExtension())
+    editor.install(Extension("git-tools", {"commands": ["git.commit", "git.push"]}, ["onWorkspace:git"]))
+    editor.install(Extension("dark-theme", {"commands": ["theme.dark"]}, ["onCommand:theme.switch"]))
+
+    print("--- 濒加载激活演示 ---")
+    editor.open_file("main.py")   # 触发 onLanguage:python → 濒加载激活
+    editor.open_file("main.py")   # 已激活，不会重复
+
+    print("\n--- 使用扩展功能 ---")
+    editor.run_command("python.lint")
+    editor.run_command("python.format")
+    editor.run_command("git.commit")  # 未激活，命令未注册

@@ -1,87 +1,93 @@
-"""SOA 进阶示例：ESB 消息转换 + 服务编排
+"""SOA 进阶示例：模拟 Apache Camel 企业服务总线（ESB）
 
-展示 SOA 的核心能力：
-- ESB 做消息格式转换——服务不需要了解其他服务的内部格式
-- ESB 编排业务流程——跨服务的复合操作由 ESB 协调
-- 服务治理——统一日志、错误处理、重试策略
+展示 SOA 中 ESB 的核心集成能力：
+- ESB（企业服务总线）：路由消息、转换格式、协调服务
+- 服务注册契约：声明接受的格式与产生的格式
+- 消息在服务间流转：OrderService → ESB（路由+转换）→ PaymentService
 """
 
 
-# --- ESB：消息转换 + 编排 + 治理 ---
+class Service:
+    """SOA 服务：注册契约，通过 ESB 通信"""
+    def __init__(self, name, accepts, produces):
+        self._name, self._accepts, self._produces = name, accepts, produces
+        self._inbox = []
+
+    def send_to_esb(self, esb, message, target):
+        print(f"[{self._name}] 发送消息到 ESB: {message} (目标: {target})")
+        esb.route(message, self, target)
+
+    def receive(self, message):
+        self._inbox.append(message)
+        print(f"[{self._name}] 收到消息: {message}")
+
+
 class ESB:
+    """企业服务总线：路由、转换、协调"""
     def __init__(self):
         self._services = {}
-        self._logs = []
+        self._routes = []
+        self._transforms = {}
 
-    def register(self, name, service):
-        self._services[name] = service
+    def register(self, service):
+        self._services[service._name] = service
+        print(f"[ESB] 注册服务: {service._name} (接受: {service._accepts}, 产生: {service._produces})")
 
-    def call(self, target, action, params):
-        self._logs.append(f"调用 {target}.{action}")
-        service = self._services.get(target)
-        if not service:
-            return {"status": "ERROR", "msg": f"服务 {target} 未注册"}
-        return service.handle(action, params)
+    def add_route(self, from_svc, to_svc):
+        self._routes.append((from_svc, to_svc))
+        print(f"[ESB] 配置路由: {from_svc} → {to_svc}")
 
-    def orchestrate(self, flow_name, params):
-        """ESB 编排跨服务业务流程"""
-        print(f"[ESB] 编排业务流程: {flow_name}")
-        if flow_name == "PLACE_ORDER":
-            # 步骤1：查用户（转换消息格式给 UserService）
-            r1 = self.call("user", "GET_USER", {"name": params["user"]})
-            if r1["status"] != "OK":
-                return {"status": "FAILED", "step": "查用户"}
-            # 步骤2：下单（转换消息格式给 OrderService）
-            r2 = self.call("order", "CREATE", {"customer": r1["data"]["name"]})
-            if r2["status"] != "OK":
-                return {"status": "FAILED", "step": "下单"}
-            # 步骤3：支付
-            r3 = self.call("payment", "CHARGE", {"order": r2["order_id"]})
-            return {"status": "OK", "result": r3}
-        return {"status": "ERROR", "msg": "未知流程"}
+    def add_transform(self, from_format, to_format, fn):
+        self._transforms[(from_format, to_format)] = fn
+        print(f"[ESB] 注册转换器: {from_format} → {to_format}")
 
-    def show_logs(self):
-        print("[ESB] 服务治理日志:")
-        for log in self._logs:
-            print(f"  - {log}")
+    def route(self, message, sender, target):
+        """路由消息：检查格式兼容性，必要时转换"""
+        print(f"[ESB] 路由消息从 {sender._name} → {target}")
+        target_svc = self._services[target]
+        # 格式不兼容时自动转换
+        if sender._produces != target_svc._accepts:
+            key = (sender._produces, target_svc._accepts)
+            fn = self._transforms.get(key)
+            if fn:
+                print(f"[ESB] 格式转换: {sender._produces} → {target_svc._accepts}")
+                message = fn(message)
+            else:
+                print(f"[ESB] 无转换器: {key}，消息丢弃")
+                return
+        target_svc.receive(message)
 
 
-# --- 服务：各用自己的术语和数据格式 ---
-class UserService:
-    def handle(self, action, params):
-        print(f"  [UserService] 处理: {action}")
-        if action == "GET_USER":
-            return {"status": "OK", "data": {"name": params["name"], "tier": "gold"}}
-        return {"status": "ERROR"}
+def xml_to_json(xml_msg):
+    """模拟 XML → JSON 转换"""
+    items = xml_msg.replace("<order>", "").replace("</order>", "").split(",")
+    pairs = [f'"field{i+1}":"{v}"' for i, v in enumerate(items)]
+    return "{" + ",".join(pairs) + "}"
 
 
-class OrderService:
-    def handle(self, action, params):
-        print(f"  [OrderService] 处理: {action}")
-        if action == "CREATE":
-            return {"status": "OK", "order_id": "ORD-002", "customer": params["customer"]}
-        return {"status": "ERROR"}
-
-
-class PaymentService:
-    def handle(self, action, params):
-        print(f"  [PaymentService] 处理: {action}")
-        if action == "CHARGE":
-            return {"status": "OK", "txn_id": "TXN-002"}
-        return {"status": "ERROR"}
-
-
-# --- 运行演示 ---
 if __name__ == "__main__":
-    esb = ESB()
-    esb.register("user", UserService())
-    esb.register("order", OrderService())
-    esb.register("payment", PaymentService())
-
     print("=" * 50)
-    print("进阶演示: ESB 编排跨服务业务流程")
+    print("进阶演示: 模拟 Apache Camel ESB SOA 架构")
     print("=" * 50 + "\n")
 
-    result = esb.orchestrate("PLACE_ORDER", {"user": "Alice"})
-    print(f"\n最终结果: {result}")
-    esb.show_logs()
+    esb = ESB()
+
+    # 服务注册契约（声明接受/产生的格式）
+    order_svc = Service("OrderService", "json", "xml")
+    payment_svc = Service("PaymentService", "json", "json")
+    notify_svc = Service("NotifyService", "json", "email")
+
+    esb.register(order_svc)
+    esb.register(payment_svc)
+    esb.register(notify_svc)
+
+    # 配置路由和格式转换
+    esb.add_route("OrderService", "PaymentService")
+    esb.add_route("PaymentService", "NotifyService")
+    esb.add_transform("xml", "json", xml_to_json)
+
+    # 消息流转：Order → ESB（路由+转换）→ Payment → ESB → Notify
+    print("\n--- 消息流转演示 ---")
+    xml_order = "<order>item=phone,qty=2,price=500</order>"
+    order_svc.send_to_esb(esb, xml_order, "PaymentService")
+    payment_svc.send_to_esb(esb, payment_svc._inbox[0], "NotifyService")

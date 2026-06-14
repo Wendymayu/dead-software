@@ -1,94 +1,88 @@
-"""微内核进阶示例：核心内进程调度 + 扩展间通信
+"""微内核进阶示例：模拟 Eclipse RCP 微内核
 
-展示微内核的进阶能力：
-- 核心内提供最基础的进程调度（不是扩展）
-- 扩展之间通过核心中转通信，不直接交互
-- 核心比插件架构更薄——核心只做调度和最基本服务
+展示 Eclipse RCP 的微内核架构：
+- EclipseCore（极薄核心）：仅提供工作台窗口管理 + 扩展点注册表
+- 所有功能（编辑器/视图/透视图）都是扩展，通过扩展点注册
+- JavaEditorExtension 通过 org.eclipse.ui.editors 扩展点注册
 """
 
+class ExtensionPoint:
+    """扩展点：内核定义的契约插槽"""
+    def __init__(self, id, desc):
+        self._id, self._desc = id, desc
+        self._contributions = []
 
-# --- 进阶微内核核心：含最基础的进程表 ---
-class MicrokernelCore:
+    def contribute(self, plugin_id, element):
+        self._contributions.append((plugin_id, element))
+        print(f"  [{plugin_id}] 向 '{self._id}' 贡献: {element}")
+
+    def list_all(self):
+        print(f"[{self._id}] 扩展点 '{self._desc}' 的贡献:")
+        for pid, elem in self._contributions: print(f"  - {pid}: {elem}")
+
+
+class EclipseCore:
+    """Eclipse RCP 微内核：极薄核心——仅窗口管理 + 扩展点"""
     def __init__(self):
-        self._extensions = {}
-        self._process_table = {}  # 核心内最基本的能力：进程管理
-        self._next_pid = 1
+        self._registry, self._windows = {}, []
 
-    def register_extension(self, name, ext):
-        self._extensions[name] = ext
+    def define_extension_point(self, id, desc):
+        """内核定义扩展点——微内核唯一提供的契约"""
+        self._registry[id] = ExtensionPoint(id, desc)
+        print(f"[EclipseCore] 定义扩展点: {id} ({desc})")
 
-    def create_process(self, name):
-        """进程管理是核心内最基本的能力，不是扩展"""
-        pid = self._next_pid
-        self._next_pid += 1
-        self._process_table[pid] = {"name": name, "status": "ready"}
-        print(f"[Core] 创建进程 PID={pid}: {name}")
-        return pid
+    def get_point(self, id): return self._registry[id]
 
-    def list_processes(self):
-        print(f"[Core] 进程表: {self._process_table}")
-        return self._process_table
+    def install_plugin(self, plugin_id, contributions):
+        """安装插件——向扩展点贡献功能"""
+        print(f"[EclipseCore] 安装插件: {plugin_id}")
+        for point_id, element in contributions:
+            self.get_point(point_id).contribute(plugin_id, element)
 
-    def request(self, ext_name, action, params):
-        ext = self._extensions.get(ext_name)
-        if not ext:
-            print(f"[Core] 扩展 {ext_name} 未注册")
-            return None
-        print(f"[Core] 调度 → {ext_name}: {action}")
-        return ext.handle(action, params)
+    def open_window(self, title):
+        """窗口管理——内核提供的唯一运行时功能"""
+        self._windows.append(title)
+        print(f"[EclipseCore] 打开工作台窗口: {title}")
 
-    def relay(self, from_ext, to_ext, action, params):
-        """扩展之间通过核心中转——不直接通信"""
-        print(f"[Core] 中转: {from_ext} → {to_ext}: {action}")
-        return self.request(to_ext, action, params)
+    def render(self):
+        """根据注册的贡献渲染完整 IDE"""
+        print(f"\n[EclipseCore] 渲染 IDE (窗口: {self._windows}):")
+        print("=" * 40)
+        for point in self._registry.values(): point.list_all()
+        print("=" * 40)
 
 
-# --- 扩展 ---
-class FileSystemExtension:
-    def handle(self, action, params):
-        print(f"  [FileSystem] 处理: {action}")
-        if action == "READ":
-            return {"content": f"文件 {params['path']} 的内容"}
-        return {"status": "ERROR"}
+class JavaEditorExtension:
+    """Java 编辑器扩展：通过 org.eclipse.ui.editors 扩展点注册"""
+    PLUGIN_ID = "org.eclipse.jdt.ui"
+
+    @staticmethod
+    def install(core):
+        core.install_plugin(JavaEditorExtension.PLUGIN_ID, [
+            ("org.eclipse.ui.editors", "JavaEditor (编辑 .java 文件)"),
+            ("org.eclipse.ui.views", "PackageExplorer (包浏览器)"),
+            ("org.eclipse.ui.menus", "Edit→Format Code"),
+        ])
 
 
-class NetworkExtension:
-    def handle(self, action, params):
-        print(f"  [Network] 处理: {action}")
-        if action == "SEND":
-            print(f"    发送数据到 {params['host']}: {params['data']}")
-            return {"status": "OK"}
-        return {"status": "ERROR"}
-
-
-class LogExtension:
-    def handle(self, action, params):
-        print(f"  [Log] 记录: {params.get('msg', '')}")
-        return {"logged": True}
-
-
-# --- 运行演示 ---
 if __name__ == "__main__":
-    core = MicrokernelCore()
-    core.register_extension("fs", FileSystemExtension())
-    core.register_extension("net", NetworkExtension())
-    core.register_extension("log", LogExtension())
-
     print("=" * 50)
-    print("进阶演示: 核心进程管理 + 扩展间中转通信")
+    print("进阶演示: 模拟 Eclipse RCP 微内核架构")
     print("=" * 50 + "\n")
 
-    # 核心内的进程管理（不是扩展提供的）
-    pid1 = core.create_process("web-server")
-    pid2 = core.create_process("db-server")
-    core.list_processes()
-    print()
+    core = EclipseCore()
+    # 微内核定义扩展点——这是核心提供的唯一契约
+    core.define_extension_point("org.eclipse.ui.editors", "编辑器插槽")
+    core.define_extension_point("org.eclipse.ui.views", "视图插槽")
+    core.define_extension_point("org.eclipse.ui.menus", "菜单插槽")
+    core.define_extension_point("org.eclipse.ui.perspectives", "透视图插槽")
 
-    # 扩展间通过核心中转：fs 读文件 → net 发送
-    content = core.request("fs", "READ", {"path": "/data/report"})
-    print(f"  → 读取结果: {content}")
-    core.relay("fs", "net", "SEND", {"host": "remote", "data": content})
-    print()
+    # 所有 IDE 功能都是扩展——包括 Java 编辑器
+    print("--- 安装扩展（核心不包含任何 IDE 功能）---")
+    JavaEditorExtension.install(core)
+    core.install_plugin("org.eclipse.debug", [("org.eclipse.ui.views", "DebugView"), ("org.eclipse.ui.menus", "Run→Debug")])
+    core.install_plugin("org.eclipse.search", [("org.eclipse.ui.views", "SearchView"), ("org.eclipse.ui.menus", "Search→Find")])
 
-    # 扩展间通过核心中转：net → log
-    core.relay("net", "log", "LOG", {"msg": "数据发送完成"})
+    # 内核打开工作台窗口，扩展贡献填充内容
+    core.open_window("Eclipse IDE")
+    core.render()

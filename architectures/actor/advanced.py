@@ -1,100 +1,99 @@
-"""Actor 进阶示例：ActorSystem + 多类型 Actor 协作
-
-展示 Actor 模型的进阶能力：
-- ActorSystem 管理所有 Actor 的生命周期和消息调度
-- 多种 Actor 类型协作完成复杂任务
-- Actor 可创建新 Actor（动态扩展系统）
+"""Actor 进阶示例：模拟 Akka Actor 系统（含监督者）
+展示 Akka 的核心 Actor 架构：
+- ActorRef：可寻址引用，只能通过它发消息（不暴露内部）
+- Mailbox：每个 Actor 有自己的消息队列，逐条处理
+- SupervisorActor：监督子 Actor，失败时自动重启（"让它崩溃"哲学）
+- WorkerActor：接收任务并发送结果，模拟崩溃
 """
 
 
+class ActorRef:
+    """ActorRef：对 Actor 的地址引用"""
+    def __init__(self, name, actor, system):
+        self._name, self._actor, self._system = name, actor, system
+    def tell(self, message, sender=None):
+        src = sender._name if sender else "system"
+        print(f"[→ {self._name}] 消息: {message} (来自 {src})")
+        self._actor._mailbox.append((message, sender))
+
+
 class Actor:
-    def __init__(self, name, system):
-        self._name = name
-        self._system = system
-        self._mailbox = []
-        self._state = {}
-
-    def send(self, target_name, message):
-        """通过系统路由发送——Actor 不直接持有其他 Actor 引用"""
-        print(f"  [{self._name}] → {target_name}: {message['type']}")
-        self._system.deliver(target_name, (self._name, message))
-
-    def receive(self, sender_name, message):
-        """处理一条消息"""
-        pass
-
-    def process_all(self):
-        while self._mailbox:
-            sender_name, message = self._mailbox.pop(0)
-            self.receive(sender_name, message)
+    """Actor 基类：邮箱队列，逐条处理"""
+    def __init__(self):
+        self._mailbox, self._ref = [], None
+    def receive(self, message, sender): pass
+    def process_mailbox(self):
+        while self._mailbox: msg, sender = self._mailbox.pop(0); self.receive(msg, sender)
 
 
 class ActorSystem:
-    """管理所有 Actor，统一调度消息传递"""
-    def __init__(self):
-        self._actors = {}
+    """ActorSystem：管理 Actor 生命周期"""
+    def __init__(self, name):
+        self._name, self._actors = name, {}
+        print(f"[ActorSystem:{name}] 系统启动")
+    def actor_of(self, cls, name):
+        actor = cls(); ref = ActorRef(name, actor, self)
+        actor._ref = ref; self._actors[name] = ref
+        print(f"[ActorSystem] 创建 Actor: {name}"); return ref
+    def restart(self, name, cls):
+        print(f"[ActorSystem] 重启 Actor: {name} (监督者策略)")
+        actor = cls(); ref = ActorRef(name, actor, self)
+        actor._ref = ref; self._actors[name] = ref; return ref
+    def run(self):
+        for ref in list(self._actors.values()): ref._actor.process_mailbox()
 
-    def create(self, actor_class, name):
-        actor = actor_class(name, self)
-        self._actors[name] = actor
-        print(f"[System] 创建 Actor: {name}")
-        return actor
 
-    def deliver(self, target_name, envelope):
-        target = self._actors.get(target_name)
-        if target:
-            target._mailbox.append(envelope)
+class SupervisorActor(Actor):
+    """监督者 Actor：监控 Worker，处理失败"""
+    def receive(self, message, sender):
+        if message == "spawn-workers":
+            print("  [Supervisor] 创建 Worker Actors")
+            self._w1 = self._ref._system.actor_of(WorkerActor, "worker-1")
+            self._w2 = self._ref._system.actor_of(WorkerActor, "worker-2")
+            self._w1._actor._supervisor = self._ref
+            self._w2._actor._supervisor = self._ref
+        elif message == "task":
+            print("  [Supervisor] 分发任务到 Worker-1")
+            self._w1.tell("compute:42", self._ref)
+        elif message.startswith("failed:"):
+            wn = message.split(":")[1]
+            print(f"  [Supervisor] Worker {wn} 崩溃! 执行重启策略")
+            self._ref._system.restart(wn, WorkerActor)
+        elif message.startswith("done:"):
+            print(f"  [Supervisor] 任务完成: {message}")
+
+
+class WorkerActor(Actor):
+    """Worker Actor：处理任务，模拟可能崩溃"""
+    _fail_on = "compute:FAIL"
+    def receive(self, message, sender):
+        if message == self._fail_on:
+            print(f"  [Worker] 处理 '{message}' → 崩溃!")
+            if hasattr(self, '_supervisor') and self._supervisor:
+                self._supervisor.tell(f"failed:{self._ref._name}")
         else:
-            print(f"  [System] Actor {target_name} 不存在")
-
-    def run_all(self):
-        """让所有 Actor 处理各自邮箱中的消息"""
-        for actor in self._actors.values():
-            actor.process_all()
+            print(f"  [Worker] 处理任务: {message} → 完成")
+            if sender: sender.tell(f"done:{message}", self._ref)
 
 
-# --- 具体 Actor ---
-class OrderActor(Actor):
-    def receive(self, sender, msg):
-        if msg["type"] == "PLACE_ORDER":
-            self._state["order_id"] = msg["order_id"]
-            print(f"  [OrderActor] 处理订单: {msg['order_id']}")
-            # 订单需要库存检查 → 向 InventoryActor 发消息
-            self.send("inventory", {"type": "CHECK_STOCK", "item": msg["item"]})
-
-
-class InventoryActor(Actor):
-    def receive(self, sender, msg):
-        if msg["type"] == "CHECK_STOCK":
-            in_stock = True  # 简化：总是有库存
-            print(f"  [InventoryActor] 库存检查: {msg['item']} → 有库存")
-            # 库存确认后 → 通知 PaymentActor
-            self.send("payment", {"type": "CHARGE", "order_id": sender, "amount": 100})
-
-
-class PaymentActor(Actor):
-    def receive(self, sender, msg):
-        if msg["type"] == "CHARGE":
-            print(f"  [PaymentActor] 扣款: 订单 {msg['order_id']}, 金额 {msg['amount']}")
-            # 支付完成 → 通知 OrderActor
-            self.send("order", {"type": "PAYMENT_DONE", "order_id": msg["order_id"]})
-
-
-# --- 运行演示 ---
 if __name__ == "__main__":
-    system = ActorSystem()
-    system.create(OrderActor, "order")
-    system.create(InventoryActor, "inventory")
-    system.create(PaymentActor, "payment")
-
+    system = ActorSystem("akka-demo")
     print("=" * 50)
-    print("进阶演示: ActorSystem + 多 Actor 协作完成订单")
+    print("进阶演示: 模拟 Akka Actor 系统（含监督者）")
     print("=" * 50 + "\n")
+    supervisor = system.actor_of(SupervisorActor, "supervisor")
 
-    # 客户发送下单消息给 OrderActor
-    system.deliver("order", ("client", {"type": "PLACE_ORDER", "order_id": "ORD-1", "item": "book"}))
+    print("--- 1. 监督者创建 Worker Actors ---")
+    supervisor.tell("spawn-workers"); system.run()
 
-    # 系统调度：每轮所有 Actor 处理消息，直到全部邮箱清空
-    for i in range(4):
-        print(f"\n--- 第 {i+1} 轮消息处理 ---")
-        system.run_all()
+    print("\n--- 2. 正常任务：Worker 处理成功 ---")
+    supervisor.tell("task"); system.run()
+
+    print("\n--- 3. 模拟崩溃：Worker 收到失败任务 ---")
+    system._actors["worker-1"].tell("compute:FAIL", supervisor); system.run()
+
+    print("\n--- 4. 重启后恢复正常 ---")
+    supervisor._w1 = system._actors["worker-1"]
+    supervisor.tell("task"); system.run()
+
+    print("\n[关键] 无共享状态，所有通信通过消息，崩溃由监督者处理")
